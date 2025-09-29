@@ -1,3 +1,7 @@
 sim
-.DS_Store
 basesim
+
+sim.dSYM
+basesim.dSYM
+
+.DS_Store
