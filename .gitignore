@@ -1,7 +1,8 @@
 sim
-basesim
+basesim*
 
 sim.dSYM
 basesim.dSYM
 
 .DS_Store
+.vscode
