@@ -11,11 +11,62 @@
 
 #include "shell.h"
 
-/* Pipeline ops (instances of this structure) are high-level representations of
- * the instructions that actually flow through the pipeline. This struct does
- * not correspond 1-to-1 with the control signals that would actually pass
- * through the pipeline. Rather, it carries the original instruction, operand
- * information and values as they are collected, and destination information. */
+#define DRAM_ACCESS_CYCLES 50
+
+// cache parameters in bytes
+#define BLOCK_SIZE 32
+
+#define ICACHE_SIZE (8 * 1024)
+#define ICACHE_WAYS 4
+#define ICACHE_SETS (ICACHE_SIZE / (BLOCK_SIZE * ICACHE_WAYS))
+
+#define DCACHE_SIZE (64 * 1024)
+#define DCACHE_WAYS 8
+#define DCACHE_SETS (DCACHE_SIZE / (BLOCK_SIZE * DCACHE_WAYS))
+
+typedef struct Block {
+    uint32_t tag, recency; // recency = 0 -> most recently used
+    uint8_t valid;         // valid bit (0 = invalid, 1 = valid)
+} Block;
+
+typedef struct Set {
+    Block *blocks; // array of blocks
+} Set;
+
+// model the cache as a tree, with blocks as leafs
+typedef struct Cache {
+    uint32_t num_sets;
+    uint32_t num_ways;
+    uint32_t block_size;
+    Set *sets; // array of sets
+
+    // for indexing:
+    uint8_t set_bits;
+    uint8_t block_bits;
+} Cache;
+
+/**
+ * @param uint16_t capacity in bytes
+ * @param uint8_t block_size in bytes
+ */
+void alloc_cache(Cache *c, uint32_t capacity, uint8_t block_size,
+                 uint8_t num_ways);
+
+/**
+ * @return how many cycles of latency for stall in interval [0,
+ * DRAM_ACCESS_CYCLES]
+ */
+uint32_t cache_access(Cache *c, uint32_t address);
+
+// Release memory dynamically allocated for a cache's arrays
+void free_cache(Cache *c);
+
+/* Pipeline ops (instances of this structure) are high-level representations
+ * of the instructions that actually flow through the pipeline. This struct
+ * does not correspond 1-to-1 with the control signals that would actually
+ * pass through the pipeline. Rather, it carries the original instruction,
+ * operand information and values as they are collected, and destination
+ * information. */
 typedef struct Pipe_Op {
     /* PC of this instruction */
     uint32_t pc;
@@ -91,7 +142,8 @@ typedef struct Pipe_State {
     int multiplier_stall; /* number of remaining cycles until HI/LO are ready */
 
     /* place other information here as necessary */
-
+    Cache icache, dcache;
+    uint32_t memory_stall; // number of cycles to stall the pipeline
 } Pipe_State;
 
 /* global variable -- pipeline state */

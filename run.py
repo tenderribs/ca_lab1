@@ -7,7 +7,7 @@
 
 import sys, os, subprocess, re, glob, argparse
 
-ref = "./basesim"
+ref = "./basesim_original"
 sim = "./sim"
 
 bold="\033[1m"
