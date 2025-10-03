@@ -41,6 +41,20 @@ void alloc_cache(Cache *c, uint32_t capacity, uint8_t block_size,
     }
 }
 
+void free_cache(Cache *c) {
+    // free the blocks in each set
+    for (size_t s = 0; s < c->num_sets; s++) {
+        // free data
+        free(c->sets[s].blocks->data);
+
+        // free the blocks
+        free(c->sets[s].blocks);
+    }
+
+    // free the sets
+    free(c->sets);
+}
+
 void update_lru(Cache *c, size_t set, size_t block) {
     uint32_t prev_recency = c->sets[set].blocks[block].recency;
 
@@ -57,14 +71,12 @@ void update_lru(Cache *c, size_t set, size_t block) {
     c->sets[set].blocks[block].recency = 0;
 }
 
-// retrieve a word of data from cache block, byte by byte
 uint32_t cblock_read_32(Block *block, uint32_t word_start) {
     return (
         block->data[word_start + 3] << 24 | block->data[word_start + 2] << 16 |
         block->data[word_start + 1] << 8 | block->data[word_start + 0] << 0);
 }
 
-// write a word to cache block byte by byte
 void cblock_write_32(Block *block, uint32_t word_start, uint32_t val) {
     block->data[word_start + 3] = (val >> 24) & 0xFF;
     block->data[word_start + 2] = (val >> 16) & 0xFF;
@@ -72,11 +84,6 @@ void cblock_write_32(Block *block, uint32_t word_start, uint32_t val) {
     block->data[word_start + 0] = (val >> 0) & 0xFF;
 }
 
-/**
- * copy a cache block from physmem word by word
- * @param uint32_t block_size the block size in bytes.
- * @param uint32_t mem_start start of memory region mapped to block
- */
 void cp_mem_to_cblock(Block *block, uint32_t block_size, uint32_t mem_start) {
     // insert bytes into block, word by word
     for (size_t word = 0; word < (block_size / 4); word++) {
@@ -91,11 +98,6 @@ void cp_mem_to_cblock(Block *block, uint32_t block_size, uint32_t mem_start) {
     }
 }
 
-/**
- * copy a cache block's data to physmem word by word
- * @param uint32_t block_size the block size in bytes.
- * @param uint32_t mem_start start of memory region mapped to block
- */
 void cp_cblock_to_mem(Block *block, uint32_t block_size, uint32_t mem_start) {
     // combine individual bytes into word, then write to physmem
     for (size_t word = 0; word < (block_size / 4); word++) {
@@ -106,6 +108,7 @@ void cp_cblock_to_mem(Block *block, uint32_t block_size, uint32_t mem_start) {
         mem_write_32(mem_start, write_data);
     }
 }
+
 uint32_t cache_access(Cache *c, uint32_t address, uint8_t is_read,
                       uint32_t *val) {
     assert((address % 4 == 0) && "Address should be multiple of 4 bytes");
@@ -216,18 +219,4 @@ uint32_t cache_access(Cache *c, uint32_t address, uint8_t is_read,
 
     // have to stall because of the cache miss
     return DRAM_ACCESS_CYCLES;
-}
-
-void free_cache(Cache *c) {
-    // free the blocks in each set
-    for (size_t s = 0; s < c->num_sets; s++) {
-        // free data
-        free(c->sets[s].blocks->data);
-
-        // free the blocks
-        free(c->sets[s].blocks);
-    }
-
-    // free the sets
-    free(c->sets);
 }
