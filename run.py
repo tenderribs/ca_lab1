@@ -7,7 +7,7 @@
 
 import sys, os, subprocess, re, glob, argparse
 
-ref = "./basesim"
+ref = "./basesim_original"
 sim = "./sim"
 
 bold="\033[1m"
@@ -50,6 +50,7 @@ def main():
                 nocheck = 1
             if (r1 != s1 and nocheck == 0):
                 print("  " + red + "ERROR" + normal)
+                assert False
                 error = 1
         else:
             print()
