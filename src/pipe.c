@@ -266,6 +266,7 @@ Pipe_State pipe;
 void pipe_init() {
     memset(&pipe, 0, sizeof(Pipe_State));
     pipe.PC = 0x00400000;
+    pipe.mem_stage_state = READ;
 
     // Initialize the caches
     alloc_cache(&pipe.icache, ICACHE_SIZE, BLOCK_SIZE, ICACHE_WAYS);
@@ -395,125 +396,158 @@ void pipe_stage_mem() {
     if (!pipe.mem_op)
         return;
 
-    // // wait for memory to respond
-    // if (pipe.memory_stall) {
-    //     pipe.memory_stall--;
-    //     return;
-    // }
+    // stall due to memory latency
+    if (pipe.memory_stall) {
+        pipe.memory_stall--;
+        return;
+    }
 
     /* grab the op out of our input slot */
     Pipe_Op *op = pipe.mem_op;
 
     uint32_t val = 0;
-    // num of cycles to stall caused by cache read
-    uint32_t r_stall_n_cycles = 0;
-    // num of cycles to stall caused by cache write (possibly != 0 even on a
-    // read hit, for ex. if write-through policy)
-    uint32_t w_stall_n_cycles = 0;
 
-    if (op->is_mem) {
-        r_stall_n_cycles = // fetch val from cache
-            cache_access(&pipe.dcache, op->mem_addr & ~3, 1, &val);
+    if (pipe.mem_stage_state == READ) {
+        if (op->is_mem) {
+            uint32_t stall_n_cycles = // fetch val from cache
+                cache_access(&pipe.dcache, op->mem_addr & ~3, 1,
+                             &op->mem_value_read);
+
+            // trigger pipeline stalls if our cache read incurs mem latency
+            if (stall_n_cycles) {
+                pipe.memory_stall = stall_n_cycles - 1; // TODO: reconsider -1
+                pipe.mem_stage_state = READING;
+                return;
+            }
+
+            pipe.mem_stage_state = PREPARE;
+        } else {
+            pipe.mem_stage_state = COMPLETE;
+        }
     }
 
-    switch (op->opcode) {
-    case OP_LW:
-    case OP_LH:
-    case OP_LHU:
-    case OP_LB:
-    case OP_LBU: {
-        /* extract needed value */
-        op->reg_dst_value_ready = 1;
-        if (op->opcode == OP_LW) {
-            op->reg_dst_value = val;
-        } else if (op->opcode == OP_LH || op->opcode == OP_LHU) {
-            if (op->mem_addr & 2)
-                val = (val >> 16) & 0xFFFF;
-            else
-                val = val & 0xFFFF;
+    // stalled long enough to proceed
+    if (pipe.mem_stage_state == READING) {
+        pipe.mem_stage_state = PREPARE;
+    }
 
-            if (op->opcode == OP_LH)
-                val |= (val & 0x8000) ? 0xFFFF8000 : 0;
+    if (pipe.mem_stage_state == PREPARE) {
+        val = op->mem_value_read;
 
-            op->reg_dst_value = val;
-        } else if (op->opcode == OP_LB || op->opcode == OP_LBU) {
-            switch (op->mem_addr & 3) {
-            case 0:
-                val = val & 0xFF;
-                break;
-            case 1:
-                val = (val >> 8) & 0xFF;
-                break;
-            case 2:
-                val = (val >> 16) & 0xFF;
-                break;
-            case 3:
-                val = (val >> 24) & 0xFF;
-                break;
+        switch (op->opcode) {
+        case OP_LW:
+        case OP_LH:
+        case OP_LHU:
+        case OP_LB:
+        case OP_LBU: {
+            /* extract needed value */
+            op->reg_dst_value_ready = 1;
+            if (op->opcode == OP_LW) {
+                op->reg_dst_value = val;
+            } else if (op->opcode == OP_LH || op->opcode == OP_LHU) {
+                if (op->mem_addr & 2)
+                    val = (val >> 16) & 0xFFFF;
+                else
+                    val = val & 0xFFFF;
+
+                if (op->opcode == OP_LH)
+                    val |= (val & 0x8000) ? 0xFFFF8000 : 0;
+
+                op->reg_dst_value = val;
+            } else if (op->opcode == OP_LB || op->opcode == OP_LBU) {
+                switch (op->mem_addr & 3) {
+                case 0:
+                    val = val & 0xFF;
+                    break;
+                case 1:
+                    val = (val >> 8) & 0xFF;
+                    break;
+                case 2:
+                    val = (val >> 16) & 0xFF;
+                    break;
+                case 3:
+                    val = (val >> 24) & 0xFF;
+                    break;
+                }
+
+                if (op->opcode == OP_LB)
+                    val |= (val & 0x80) ? 0xFFFFFF80 : 0;
+
+                op->reg_dst_value = val;
             }
-
-            if (op->opcode == OP_LB)
-                val |= (val & 0x80) ? 0xFFFFFF80 : 0;
-
-            op->reg_dst_value = val;
         }
-    } break;
+            pipe.mem_stage_state = COMPLETE;
+            break;
 
-    case OP_SB:
-    case OP_SH:
-    case OP_SW:
-        // prepare new word
-        if (op->opcode == OP_SB) {
-            switch (op->mem_addr & 3) {
-            case 0:
-                val = (val & 0xFFFFFF00) | ((op->mem_value & 0xFF) << 0);
-                break;
-            case 1:
-                val = (val & 0xFFFF00FF) | ((op->mem_value & 0xFF) << 8);
-                break;
-            case 2:
-                val = (val & 0xFF00FFFF) | ((op->mem_value & 0xFF) << 16);
-                break;
-            case 3:
-                val = (val & 0x00FFFFFF) | ((op->mem_value & 0xFF) << 24);
-                break;
-            }
-        } else if (op->opcode == OP_SH) {
+        case OP_SB:
+        case OP_SH:
+        case OP_SW: {
+            if (op->opcode == OP_SB) { // prepare new word
+                switch (op->mem_addr & 3) {
+                case 0:
+                    val = (val & 0xFFFFFF00) | ((op->mem_value & 0xFF) << 0);
+                    break;
+                case 1:
+                    val = (val & 0xFFFF00FF) | ((op->mem_value & 0xFF) << 8);
+                    break;
+                case 2:
+                    val = (val & 0xFF00FFFF) | ((op->mem_value & 0xFF) << 16);
+                    break;
+                case 3:
+                    val = (val & 0x00FFFFFF) | ((op->mem_value & 0xFF) << 24);
+                    break;
+                }
+            } else if (op->opcode == OP_SH) {
 #ifdef DEBUG
-            printf("SH: addr %08x val %04x old word %08x\n", op->mem_addr,
-                   op->mem_value & 0xFFFF, val);
+                printf("SH: addr %08x val %04x old word %08x\n", op->mem_addr,
+                       op->mem_value & 0xFFFF, val);
 #endif
-            if (op->mem_addr & 2) {
-                val = (val & 0x0000FFFF) | (op->mem_value) << 16;
-            } else {
-                val = (val & 0xFFFF0000) | (op->mem_value & 0xFFFF);
-            }
+                if (op->mem_addr & 2) {
+                    val = (val & 0x0000FFFF) | (op->mem_value) << 16;
+                } else {
+                    val = (val & 0xFFFF0000) | (op->mem_value & 0xFFFF);
+                }
 #ifdef DEBUG
-            printf("new word %08x\n", val);
+                printf("new word %08x\n", val);
 #endif
 
-        } else { // op->code == OP_SW
-            val = op->mem_value;
+            } else { // op->code == OP_SW
+                val = op->mem_value;
+            }
+
+            // go the the WRITE state
+            pipe.mem_stage_state = WRITE;
+            break;
         }
+        }
+    }
 
-        // write word to cache
-        uint32_t w_stall_cycles =
+    if (pipe.mem_stage_state == WRITE) {
+        uint32_t stall_n_cycles = // write word to cache
             cache_access(&pipe.dcache, op->mem_addr & ~3, 0, &val);
-        break;
+
+        // trigger stall if necessary
+        if (stall_n_cycles) {
+            pipe.memory_stall = stall_n_cycles - 1;
+            pipe.mem_stage_state = WRITING;
+            return;
+        }
+
+        pipe.mem_stage_state = COMPLETE;
     }
 
-    // // trigger pipeline stalls if our cache read + write incurs mem latency
-    // if (r_stall_n_cycles + w_stall_n_cycles) {
-    //     // idk abt - 1, IMO the triggering cycle also counts towards the
-    //     stall
-    //     // duration
-    //     pipe.memory_stall = r_stall_n_cycles + w_stall_n_cycles - 1;
-    //     return;
-    // }
+    // pipeline stall duration is complete
+    if (pipe.mem_stage_state == WRITING) {
+        pipe.mem_stage_state = COMPLETE;
+    }
 
-    /* clear stage input and transfer to next stage */
-    pipe.mem_op = NULL;
-    pipe.wb_op = op;
+    if (pipe.mem_stage_state == COMPLETE) {
+        pipe.mem_stage_state = READ; // reset state machine for next op
+
+        /* clear stage input and transfer to next stage */
+        pipe.mem_op = NULL;
+        pipe.wb_op = op;
+    }
 }
 
 void pipe_stage_execute() {
@@ -961,21 +995,21 @@ void pipe_stage_fetch() {
     if (pipe.decode_op != NULL)
         return;
 
-    // // wait for memory to respond
-    // if (pipe.memory_stall) {
-    //     pipe.memory_stall--;
-    //     return;
-    // }
+    // wait for memory to respond
+    if (pipe.memory_stall) {
+        pipe.memory_stall--;
+        return;
+    }
 
     // check cache if the address is ready
     uint32_t instr = 0;
     uint32_t stall_n_cycles = cache_access(&pipe.icache, pipe.PC, 1, &instr);
 
-    // if (stall_n_cycles > 0) {
-    //     // -1 because this cycle counts too for mem latency
-    //     pipe.memory_stall = stall_n_cycles - 1;
-    //     return;
-    // }
+    if (stall_n_cycles > 0) {
+        // -1 because this cycle counts too for mem latency
+        pipe.memory_stall = stall_n_cycles - 1;
+        return;
+    }
 
     /* Allocate an op and send it down the pipeline. */
     Pipe_Op *op = malloc(sizeof(Pipe_Op));

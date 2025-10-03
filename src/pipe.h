@@ -48,6 +48,15 @@ typedef struct Cache {
     uint8_t block_bits;
 } Cache;
 
+typedef enum MemStageState {
+    READ,     // state reads value from cache
+    READING,  // state reading value from cache
+    PREPARE,  // state prepares data word
+    WRITE,    // state writes value to cache
+    WRITING,  // state where write to cache is underway
+    COMPLETE, // state means mem stage is complete
+} MemStageState;
+
 /**
  * @param uint16_t capacity in bytes
  * @param uint8_t block_size in bytes
@@ -100,7 +109,7 @@ typedef struct Pipe_Op {
     int mem_write;     /* is this a write to memory? */
     uint32_t
         mem_value; /* value loaded from memory or to be written to memory */
-
+    uint32_t mem_value_read; // temp variable for cache reads if stage stalls
     /* register destination information */
     int reg_dst; /* 0 -- 31 if this inst has a destination register, -1
                     otherwise */
@@ -152,6 +161,7 @@ typedef struct Pipe_State {
     /* place other information here as necessary */
     Cache icache, dcache;
     uint32_t memory_stall; // number of cycles to stall the pipeline
+    MemStageState mem_stage_state;
 } Pipe_State;
 
 /* global variable -- pipeline state */
@@ -172,6 +182,41 @@ void pipe_recover(int flush, uint32_t dest);
 void pipe_stage_fetch();
 void pipe_stage_decode();
 void pipe_stage_execute();
+/*
+The memory stage uses a state machine to ensure that stalls are simulated
+correctly and data propagates realistically.
+
+               │
+               ▼
+            ┌────┐  NOT MEM OP
+            │READ│─────────────┐
+            └────┘             │
+            ┌──┴───┐ NO        │
+      STALL ▼      │ STALL     │
+       ┌───────┐   │           │
+       │READING│   │           │
+       └────┬──┘   │           │
+            └───┬──┘           │
+                ▼              │
+      STORE ┌───────┐ LOAD     │
+         ┌──│PREPARE│──┐       │
+         │  └───────┘  │       │
+         ▼             │       │
+      ┌─────┐          │       │
+      │WRITE│ NO       │       │
+STALL └─────┘ STALL    │       │
+    ┌──┘  └─────┐      │       │
+    ▼           │      │       │
+┌───────┐       │      │       │
+│WRITING│       │      │       │
+└───┬───┘       │      │       │
+    └───────────┼──────┘       │
+                │              │
+                ▼              │
+           ┌────────┐          │
+           │COMPLETE│◄─────────┘
+           └────────┘
+*/
 void pipe_stage_mem();
 void pipe_stage_wb();
 
