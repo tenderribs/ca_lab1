@@ -139,7 +139,8 @@ typedef struct Pipe_State {
 
     /* place other information here as necessary */
     Cache icache, dcache;
-    uint32_t memory_stall; // number of cycles to stall the pipeline
+    uint32_t fetch_stall; // num of cycles to stall because of fetch stage
+    uint32_t mem_stall;   // num of cycles to stall because of mem stage
     MemStageState mem_stage_state;
 } Pipe_State;
 

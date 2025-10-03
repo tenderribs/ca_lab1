@@ -148,7 +148,7 @@ void pipe_stage_wb() {
                                  correct PC */
 
             // fetch stage won't run if memory is stalled
-            if (pipe.memory_stall) {
+            if (pipe.fetch_stall) {
                 pipe.PC += 4;
             }
             RUN_BIT = 0;
@@ -167,8 +167,8 @@ void pipe_stage_mem() {
         return;
 
     // stall due to memory latency
-    if (pipe.memory_stall) {
-        pipe.memory_stall--;
+    if (pipe.mem_stall) {
+        pipe.mem_stall--;
         return;
     }
 
@@ -185,7 +185,7 @@ void pipe_stage_mem() {
 
             // trigger pipeline stalls if our cache read incurs mem latency
             if (stall_n_cycles) {
-                pipe.memory_stall = stall_n_cycles - 1; // TODO: reconsider -1
+                pipe.mem_stall = stall_n_cycles - 1; // TODO: reconsider -1
                 pipe.mem_stage_state = READING;
                 return;
             }
@@ -298,7 +298,7 @@ void pipe_stage_mem() {
 
         // trigger stall if necessary
         if (stall_n_cycles) {
-            pipe.memory_stall = stall_n_cycles - 1;
+            pipe.mem_stall = stall_n_cycles - 1;
             pipe.mem_stage_state = WRITING;
             return;
         }
@@ -766,8 +766,8 @@ void pipe_stage_fetch() {
         return;
 
     // wait for memory to respond
-    if (pipe.memory_stall) {
-        pipe.memory_stall--;
+    if (pipe.fetch_stall) {
+        pipe.fetch_stall--;
         return;
     }
 
@@ -777,7 +777,7 @@ void pipe_stage_fetch() {
 
     if (stall_n_cycles > 0) {
         // -1 because this cycle counts too for mem latency
-        pipe.memory_stall = stall_n_cycles - 1;
+        pipe.fetch_stall = stall_n_cycles - 1;
         return;
     }
 
