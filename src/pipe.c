@@ -49,7 +49,9 @@ void alloc_cache(Cache *c, uint32_t capacity, uint8_t block_size,
 
             block->tag = 0;
             block->valid = 0;
+            block->dirty = 0;
             block->recency = b;
+            block->data = malloc(sizeof(uint32_t) * c->block_size);
         }
     }
 }
@@ -70,10 +72,68 @@ void update_lru(Cache *c, size_t set, size_t block) {
     c->sets[set].blocks[block].recency = 0;
 }
 
-uint32_t cache_access(Cache *c, uint32_t address) {
+// retrieve a word of data from cache block, byte by byte
+uint32_t cblock_read_32(Block *block, uint32_t word_start) {
+    return (
+        block->data[word_start + 3] << 24 | block->data[word_start + 2] << 16 |
+        block->data[word_start + 1] << 8 | block->data[word_start + 0] << 0);
+}
+
+// write a word to cache block byte by byte
+void cblock_write_32(Block *block, uint32_t word_start, uint32_t val) {
+    block->data[word_start + 3] = (val >> 24) & 0xFF;
+    block->data[word_start + 2] = (val >> 16) & 0xFF;
+    block->data[word_start + 1] = (val >> 8) & 0xFF;
+    block->data[word_start + 0] = (val >> 0) & 0xFF;
+}
+
+/**
+ * copy a cache block from physmem word by word
+ * @param uint32_t block_size the block size in bytes.
+ * @param uint32_t mem_start start of memory region mapped to block
+ */
+void cp_mem_to_cblock(Block *block, uint32_t block_size, uint32_t mem_start) {
+    // insert bytes into block, word by word
+    for (size_t word = 0; word < (block_size / 4); word++) {
+        // first load word from mem
+        uint32_t from_mem = mem_read_32(mem_start + word * 4);
+
+        // then separate word into bytes, place in block
+        block->data[word * 4 + 0] = (from_mem >> 0) & 0xFF;
+        block->data[word * 4 + 1] = (from_mem >> 8) & 0xFF;
+        block->data[word * 4 + 2] = (from_mem >> 16) & 0xFF;
+        block->data[word * 4 + 3] = (from_mem >> 24) & 0xFF;
+    }
+}
+
+/**
+ * copy a cache block's data to physmem word by word
+ * @param uint32_t block_size the block size in bytes.
+ * @param uint32_t mem_start start of memory region mapped to block
+ */
+void cp_cblock_to_mem(Block *block, uint32_t block_size, uint32_t mem_start) {
+    // combine individual bytes into word, then write to physmem
+    for (size_t word = 0; word < (block_size / 4); word++) {
+        uint32_t write_data =
+            (block->data[word * 4 + 3] << 24 | block->data[word * 4 + 2] << 16 |
+             block->data[word * 4 + 1] << 8 | block->data[word * 4 + 0] << 0);
+
+        mem_write_32(mem_start, write_data);
+    }
+}
+uint32_t cache_access(Cache *c, uint32_t address, uint8_t is_read,
+                      uint32_t *val) {
+    assert((address % 4 == 0) && "Address should be multiple of 4 bytes");
+
     // calculate the set index and the tag
     uint32_t tag = (address >> (c->block_bits + c->set_bits));
     uint32_t set = ((address >> c->block_bits) & ((1 << c->set_bits) - 1));
+
+    // 4 byte aligned start pos where we shall access the word in the block
+    uint32_t word_start = (address & ((1 << c->block_bits) - 1)) & ~3;
+
+    // starting address of memory region that gets mapped to cblock
+    uint32_t block_mem_start_addr = (address & ~((1 << c->block_bits) - 1));
 
     // check set for any hits in set
     for (size_t b = 0; b < c->num_ways; b++) {
@@ -82,7 +142,25 @@ uint32_t cache_access(Cache *c, uint32_t address) {
             // HIT cuz tag matches and block is valid
             // -> update LRU positions of set's blocks
             update_lru(c, set, b);
-            return 0;
+
+            if (is_read) {
+                // read the word held inside cache blocks
+                *val = cblock_read_32(&c->sets[set].blocks[b], word_start);
+
+                return 0;
+            } else {
+                // write value to cblock
+                cblock_write_32(&c->sets[set].blocks[b], word_start, *val);
+                c->sets[set].blocks[b].dirty = 1;
+
+                // write through policy for now, so write cblock directly to mem
+                cp_cblock_to_mem(&c->sets[set].blocks[b], c->block_size,
+                                 block_mem_start_addr);
+                c->sets[set].blocks[b].dirty = 0;
+
+                // write through's write causes stall
+                return DRAM_ACCESS_CYCLES;
+            }
         }
     }
 
@@ -91,10 +169,30 @@ uint32_t cache_access(Cache *c, uint32_t address) {
     // 1. look for invalid blocks we can just fill up for first time, exit early
     for (size_t b = 0; b < c->num_ways; b++) {
         if (!c->sets[set].blocks[b].valid) {
-            // found one, so initialize it
+            // found empty block, initialize it
             c->sets[set].blocks[b].tag = tag;
+            c->sets[set].blocks[b].dirty = 0;
             c->sets[set].blocks[b].valid = 1;
             update_lru(c, set, b);
+
+            // transfer the block of bytes from physmem to the empty cache block
+            cp_mem_to_cblock(&c->sets[set].blocks[b], c->block_size,
+                             block_mem_start_addr);
+
+            // then make use of loaded block
+            if (is_read) {
+                // read the loaded block in cache
+                *val = cblock_read_32(&c->sets[set].blocks[b], word_start);
+            } else {
+                // write val to cache block
+                cblock_write_32(&c->sets[set].blocks[b], word_start, *val);
+                c->sets[set].blocks[b].dirty = 1;
+
+                // write cblock directly to mem due to write-through policy
+                cp_cblock_to_mem(&c->sets[set].blocks[b], c->block_size,
+                                 block_mem_start_addr);
+                c->sets[set].blocks[b].dirty = 0;
+            }
 
             return DRAM_ACCESS_CYCLES;
         }
@@ -103,11 +201,31 @@ uint32_t cache_access(Cache *c, uint32_t address) {
     // 2. blocks all valid, so evict the oldest block in set
     for (size_t b = 0; b < c->num_ways; b++) {
         if (c->sets[set].blocks[b].recency == (c->num_ways - 1)) {
-            // found oldest block, so evict it
+            // found oldest block, replace it
             c->sets[set].blocks[b].tag = tag;
+            c->sets[set].blocks[b].dirty = 0;
             c->sets[set].blocks[b].valid = 1;
             update_lru(c, set, b);
-            break;
+
+            // transfer the block of bytes from physmem to the empty cache block
+            cp_mem_to_cblock(&c->sets[set].blocks[b], c->block_size,
+                             block_mem_start_addr);
+
+            if (is_read) {
+                // read the loaded block in cache
+                *val = cblock_read_32(&c->sets[set].blocks[b], word_start);
+            } else {
+                // write val to cache block
+                cblock_write_32(&c->sets[set].blocks[b], word_start, *val);
+                c->sets[set].blocks[b].dirty = 1;
+
+                // write cblock directly to mem due to write-through policy
+                cp_cblock_to_mem(&c->sets[set].blocks[b], c->block_size,
+                                 block_mem_start_addr);
+                c->sets[set].blocks[b].dirty = 0;
+            }
+
+            return DRAM_ACCESS_CYCLES;
         }
     }
 
@@ -118,6 +236,10 @@ uint32_t cache_access(Cache *c, uint32_t address) {
 void free_cache(Cache *c) {
     // free the blocks in each set
     for (size_t s = 0; s < c->num_sets; s++) {
+        // free data
+        free(c->sets[s].blocks->data);
+
+        // free the blocks
         free(c->sets[s].blocks);
     }
 
@@ -273,26 +395,25 @@ void pipe_stage_mem() {
     if (!pipe.mem_op)
         return;
 
-    // wait for memory to respond
-    if (pipe.memory_stall) {
-        pipe.memory_stall--;
-        return;
-    }
+    // // wait for memory to respond
+    // if (pipe.memory_stall) {
+    //     pipe.memory_stall--;
+    //     return;
+    // }
 
     /* grab the op out of our input slot */
     Pipe_Op *op = pipe.mem_op;
 
     uint32_t val = 0;
+    // num of cycles to stall caused by cache read
+    uint32_t r_stall_n_cycles = 0;
+    // num of cycles to stall caused by cache write (possibly != 0 even on a
+    // read hit, for ex. if write-through policy)
+    uint32_t w_stall_n_cycles = 0;
+
     if (op->is_mem) {
-        uint32_t stall_n_cycles = cache_access(&pipe.dcache, op->mem_addr & ~3);
-
-        if (stall_n_cycles > 0) {
-            // - 1 because this cycle counts for access to memory
-            pipe.memory_stall = stall_n_cycles - 1;
-            return;
-        }
-
-        val = mem_read_32(op->mem_addr & ~3);
+        r_stall_n_cycles = // fetch val from cache
+            cache_access(&pipe.dcache, op->mem_addr & ~3, 1, &val);
     }
 
     switch (op->opcode) {
@@ -339,45 +460,56 @@ void pipe_stage_mem() {
     } break;
 
     case OP_SB:
-        switch (op->mem_addr & 3) {
-        case 0:
-            val = (val & 0xFFFFFF00) | ((op->mem_value & 0xFF) << 0);
-            break;
-        case 1:
-            val = (val & 0xFFFF00FF) | ((op->mem_value & 0xFF) << 8);
-            break;
-        case 2:
-            val = (val & 0xFF00FFFF) | ((op->mem_value & 0xFF) << 16);
-            break;
-        case 3:
-            val = (val & 0x00FFFFFF) | ((op->mem_value & 0xFF) << 24);
-            break;
+    case OP_SH:
+    case OP_SW:
+        // prepare new word
+        if (op->opcode == OP_SB) {
+            switch (op->mem_addr & 3) {
+            case 0:
+                val = (val & 0xFFFFFF00) | ((op->mem_value & 0xFF) << 0);
+                break;
+            case 1:
+                val = (val & 0xFFFF00FF) | ((op->mem_value & 0xFF) << 8);
+                break;
+            case 2:
+                val = (val & 0xFF00FFFF) | ((op->mem_value & 0xFF) << 16);
+                break;
+            case 3:
+                val = (val & 0x00FFFFFF) | ((op->mem_value & 0xFF) << 24);
+                break;
+            }
+        } else if (op->opcode == OP_SH) {
+#ifdef DEBUG
+            printf("SH: addr %08x val %04x old word %08x\n", op->mem_addr,
+                   op->mem_value & 0xFFFF, val);
+#endif
+            if (op->mem_addr & 2) {
+                val = (val & 0x0000FFFF) | (op->mem_value) << 16;
+            } else {
+                val = (val & 0xFFFF0000) | (op->mem_value & 0xFFFF);
+            }
+#ifdef DEBUG
+            printf("new word %08x\n", val);
+#endif
+
+        } else { // op->code == OP_SW
+            val = op->mem_value;
         }
 
-        mem_write_32(op->mem_addr & ~3, val);
-        break;
-
-    case OP_SH:
-#ifdef DEBUG
-        printf("SH: addr %08x val %04x old word %08x\n", op->mem_addr,
-               op->mem_value & 0xFFFF, val);
-#endif
-        if (op->mem_addr & 2)
-            val = (val & 0x0000FFFF) | (op->mem_value) << 16;
-        else
-            val = (val & 0xFFFF0000) | (op->mem_value & 0xFFFF);
-#ifdef DEBUG
-        printf("new word %08x\n", val);
-#endif
-
-        mem_write_32(op->mem_addr & ~3, val);
-        break;
-
-    case OP_SW:
-        val = op->mem_value;
-        mem_write_32(op->mem_addr & ~3, val);
+        // write word to cache
+        uint32_t w_stall_cycles =
+            cache_access(&pipe.dcache, op->mem_addr & ~3, 0, &val);
         break;
     }
+
+    // // trigger pipeline stalls if our cache read + write incurs mem latency
+    // if (r_stall_n_cycles + w_stall_n_cycles) {
+    //     // idk abt - 1, IMO the triggering cycle also counts towards the
+    //     stall
+    //     // duration
+    //     pipe.memory_stall = r_stall_n_cycles + w_stall_n_cycles - 1;
+    //     return;
+    // }
 
     /* clear stage input and transfer to next stage */
     pipe.mem_op = NULL;
@@ -829,27 +961,29 @@ void pipe_stage_fetch() {
     if (pipe.decode_op != NULL)
         return;
 
-    // wait for memory to respond
-    if (pipe.memory_stall) {
-        pipe.memory_stall--;
-        return;
-    }
+    // // wait for memory to respond
+    // if (pipe.memory_stall) {
+    //     pipe.memory_stall--;
+    //     return;
+    // }
 
     // check cache if the address is ready
-    uint32_t stall_n_cycles = cache_access(&pipe.icache, pipe.PC);
+    uint32_t instr = 0;
+    uint32_t stall_n_cycles = cache_access(&pipe.icache, pipe.PC, 1, &instr);
 
-    if (stall_n_cycles > 0) {
-        // -1 because this cycle counts too for mem latency
-        pipe.memory_stall = stall_n_cycles - 1;
-        return;
-    }
+    // if (stall_n_cycles > 0) {
+    //     // -1 because this cycle counts too for mem latency
+    //     pipe.memory_stall = stall_n_cycles - 1;
+    //     return;
+    // }
 
     /* Allocate an op and send it down the pipeline. */
     Pipe_Op *op = malloc(sizeof(Pipe_Op));
     memset(op, 0, sizeof(Pipe_Op));
     op->reg_src1 = op->reg_src2 = op->reg_dst = -1;
 
-    op->instruction = mem_read_32(pipe.PC);
+    // op->instruction = mem_read_32(pipe.PC);
+    op->instruction = instr;
     op->pc = pipe.PC;
     pipe.decode_op = op;
 

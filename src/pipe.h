@@ -13,7 +13,7 @@
 
 #define DRAM_ACCESS_CYCLES 50
 
-// cache parameters in bytes
+// cache parameters in bytes, 16, 32, 64
 #define BLOCK_SIZE 32
 
 #define ICACHE_SIZE (8 * 1024)
@@ -27,6 +27,9 @@
 typedef struct Block {
     uint32_t tag, recency; // recency = 0 -> most recently used
     uint8_t valid;         // valid bit (0 = invalid, 1 = valid)
+    uint8_t dirty;         // dirty bit (0 = clean, 1 = dirty)
+
+    uint8_t *data; // block_size bytes of data
 } Block;
 
 typedef struct Set {
@@ -53,12 +56,17 @@ void alloc_cache(Cache *c, uint32_t capacity, uint8_t block_size,
                  uint8_t num_ways);
 
 /**
+ * @param uint32_t address 4 byte aligned adress to access (uint32_t is multiple
+ * of 4)
+ * @param uint32* if read, read value placed in ptr. if write, ptr to value to
+ * be written.
  * @return how many cycles of latency for stall in interval [0,
  * DRAM_ACCESS_CYCLES]
  */
-uint32_t cache_access(Cache *c, uint32_t address);
+uint32_t cache_access(Cache *c, uint32_t address, uint8_t is_read,
+                      uint32_t *val);
 
-// Release memory dynamically allocated for a cache's arrays
+// Release memory dynamically allocated for a cache
 void free_cache(Cache *c);
 
 /* Pipeline ops (instances of this structure) are high-level representations

@@ -50,6 +50,7 @@ def main():
                 nocheck = 1
             if (r1 != s1 and nocheck == 0):
                 print("  " + red + "ERROR" + normal)
+                assert False
                 error = 1
         else:
             print()
