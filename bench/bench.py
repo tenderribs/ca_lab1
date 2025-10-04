@@ -17,8 +17,10 @@ red = "\033[0;31m"
 normal = "\033[0m"
 
 
+test_files = "inputs/inst/addi.x"
+
 def main(sweep):
-    all_inputs = glob.glob("inputs/long/*.x")
+    all_inputs = glob.glob(test_files)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("inputs", nargs="*", default=all_inputs)
@@ -153,8 +155,8 @@ def gen_param_sweep():
 
 
 def save_results(results):
-    output_file = "OUT.csv"
-    with open(output_file, "w", newline="") as csvfile:
+    outfile = f"{test_files}.csv".replace("/", "_")
+    with open(f"bench/{outfile}", "w", newline="") as csvfile:
         fieldnames = [f for f in results[0].keys() if f not in ["in_idx", "p_idx"]]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -165,7 +167,7 @@ def save_results(results):
             filtered_results.append(filtered)
         writer.writerows(filtered_results)
 
-    print(green + f"Results saved to {output_file}" + normal)
+    print(green + f"Results saved to {outfile}" + normal)
 
 
 if __name__ == "__main__":
