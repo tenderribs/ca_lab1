@@ -12,51 +12,6 @@
 #include "cache.h"
 #include "shell.h"
 
-/**
-The memory stage uses a state machine to ensure that stalls are simulated
-correctly and data propagates realistically. https://asciiflow.com/#/
-
-               │
-               ▼
-            ┌────┐  NOT MEM OP
-            │READ│─────────────┐
-            └────┘             │
-            ┌──┴───┐ NO        │
-      STALL ▼      │ STALL     │
-       ┌───────┐   │           │
-       │READING│   │           │
-       └────┬──┘   │           │
-            └───┬──┘           │
-                ▼              │
-      STORE ┌───────┐ LOAD     │
-         ┌──│PREPARE│──┐       │
-         │  └───────┘  │       │
-         ▼             │       │
-      ┌─────┐          │       │
-      │WRITE│ NO       │       │
-STALL └─────┘ STALL    │       │
-    ┌──┘  └─────┐      │       │
-    ▼           │      │       │
-┌───────┐       │      │       │
-│WRITING│       │      │       │
-└───┬───┘       │      │       │
-    └───────────┼──────┘       │
-                │              │
-                ▼              │
-           ┌────────┐          │
-           │COMPLETE│◄─────────┘
-           └────────┘
-*/
-
-typedef enum MemStageState {
-    READ,     // state reads value from cache
-    READING,  // state reading value from cache
-    PREPARE,  // state prepares data word
-    WRITE,    // state writes value to cache
-    WRITING,  // state where write to cache is underway
-    COMPLETE, // state means mem stage is complete
-} MemStageState;
-
 /* Pipeline ops (instances of this structure) are high-level representations
  * of the instructions that actually flow through the pipeline. This struct
  * does not correspond 1-to-1 with the control signals that would actually
@@ -141,7 +96,6 @@ typedef struct Pipe_State {
     Cache icache, dcache;
     uint32_t fetch_stall; // num of cycles to stall because of fetch stage
     uint32_t mem_stall;   // num of cycles to stall because of mem stage
-    MemStageState mem_stage_state;
 } Pipe_State;
 
 /* global variable -- pipeline state */
