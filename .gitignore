@@ -7,4 +7,4 @@ basesim.dSYM
 .DS_Store
 .vscode
 .venv
-*.csv
+**.csv
