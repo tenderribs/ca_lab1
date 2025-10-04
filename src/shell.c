@@ -178,6 +178,40 @@ void go() {
     return;
   }
 
+  
+
+  printf("Simulating...\n\n");
+  while (RUN_BIT)
+    cycle();
+  printf("Simulator halted\n\n");
+}
+
+/***************************************************************/
+/*                                                             */
+/* Procedure : bench                                           */
+/*                                                             */
+/* Purpose   :  run my benchmarks                              */
+/*                                                             */
+/***************************************************************/
+void bench() {                                                     
+  if (RUN_BIT == FALSE) {
+    printf("Can't simulate, Simulator is halted\n\n");
+    return;
+  }
+
+  uint32_t params[5]; // block_size, icache_size, icache_ways, dcache_size, dcache_ways
+  
+  // Read cache parameters from stdin
+  printf("Enter cache parameters (block_size icache_size icache_ways dcache_size dcache_ways): ");
+  if (scanf("%d %d %d %d %d", &params[0], &params[1], &params[2], &params[3], &params[4]) != 5) {
+    printf("Error reading cache parameters. Expected 5 uint32_ts.\n");
+    return;
+  }
+  
+  // configure caches to spec
+  alloc_cache(&pipe.icache, params[1], params[0], params[2]);
+  alloc_cache(&pipe.dcache, params[3], params[0], params[4]);
+
   printf("Simulating...\n\n");
   while (RUN_BIT)
     cycle();
@@ -303,6 +337,10 @@ void get_command() {
    pipe.LO = register_value; 
    break;
 
+  case 'b':
+  case 'B': 
+    bench();
+    break;
   default:
     printf("Invalid Command\n");
     break;

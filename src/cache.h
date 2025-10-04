@@ -4,18 +4,13 @@
 #ifndef _CACHE_H_
 #define _CACHE_H_
 
-#define DRAM_ACCESS_CYCLES 50
-
-// cache parameters in bytes, 16, 32, 64
 #define BLOCK_SIZE 32
 
 #define ICACHE_SIZE (8 * 1024)
 #define ICACHE_WAYS 4
-#define ICACHE_SETS (ICACHE_SIZE / (BLOCK_SIZE * ICACHE_WAYS))
 
 #define DCACHE_SIZE (64 * 1024)
 #define DCACHE_WAYS 8
-#define DCACHE_SETS (DCACHE_SIZE / (BLOCK_SIZE * DCACHE_WAYS))
 
 typedef struct Block {
     uint32_t tag, recency; // recency = 0 -> most recently used
