@@ -6,3 +6,4 @@ basesim.dSYM
 
 .DS_Store
 .vscode
+.venv

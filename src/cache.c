@@ -2,6 +2,8 @@
 #include "shell.h"
 #include <assert.h>
 
+#define DRAM_ACCESS_CYCLES 50
+
 void alloc_cache(Cache *c, uint32_t capacity, uint8_t block_size,
                  uint8_t num_ways) {
     c->block_size = block_size;
