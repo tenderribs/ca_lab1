@@ -4,6 +4,14 @@
 #ifndef _CACHE_H_
 #define _CACHE_H_
 
+#define BLOCK_SIZE 32
+
+#define ICACHE_SIZE (8 * 1024)
+#define ICACHE_WAYS 4
+
+#define DCACHE_SIZE (64 * 1024)
+#define DCACHE_WAYS 8
+
 typedef struct Block {
     uint32_t tag, recency; // recency = 0 -> most recently used
     uint8_t valid;         // valid bit (0 = invalid, 1 = valid)

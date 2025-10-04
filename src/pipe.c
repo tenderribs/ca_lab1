@@ -8,7 +8,6 @@
 
 #include "pipe.h"
 #include "cache.h"
-#include "cache_params.h"
 #include "mips.h"
 #include "shell.h"
 #include <assert.h>
