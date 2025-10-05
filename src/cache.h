@@ -37,8 +37,8 @@ typedef struct Cache {
  * @param uint16_t capacity in bytes
  * @param uint8_t block_size in bytes
  */
-void alloc_cache(Cache *c, uint32_t capacity, uint8_t block_size,
-                 uint8_t num_ways);
+void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways,
+                 uint8_t block_size);
 
 /* Release memory dynamically allocated for a cache */
 void free_cache(Cache *c);

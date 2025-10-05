@@ -4,8 +4,8 @@
 
 #define DRAM_ACCESS_CYCLES 50
 
-void alloc_cache(Cache *c, uint32_t capacity, uint8_t block_size,
-                 uint8_t num_ways) {
+void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways,
+                 uint8_t block_size) {
     c->block_size = block_size;
     c->num_sets = capacity / (block_size * num_ways);
     c->num_ways = num_ways;

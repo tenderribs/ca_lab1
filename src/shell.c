@@ -199,18 +199,18 @@ void bench() {
     return;
   }
 
-  uint32_t params[5]; // block_size, icache_size, icache_ways, dcache_size, dcache_ways
+  uint32_t params[6]; 
   
   // Read cache parameters from stdin
-  printf("Enter cache parameters (block_size icache_size icache_ways dcache_size dcache_ways): ");
-  if (scanf("%d %d %d %d %d", &params[0], &params[1], &params[2], &params[3], &params[4]) != 5) {
-    printf("Error reading cache parameters. Expected 5 uint32_ts.\n");
+  printf("Enter cache parameters (icache_cap icache_ways icache_blsz dcache_cap dcache_ways, dcache_blsz): ");
+  if (scanf("%d %d %d %d %d %d", &params[0], &params[1], &params[2], &params[3], &params[4], &params[5]) != 6) {
+    printf("Error reading cache parameters. Expected 6 uint32_ts.\n");
     return;
   }
   
   // configure caches to spec
-  alloc_cache(&pipe.icache, params[1], params[0], params[2]);
-  alloc_cache(&pipe.dcache, params[3], params[0], params[4]);
+  alloc_cache(&pipe.icache, params[0], params[1], params[2]);
+  alloc_cache(&pipe.dcache, params[3], params[4], params[5]);
 
   printf("Simulating...\n\n");
   while (RUN_BIT)
