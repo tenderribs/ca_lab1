@@ -1,8 +1,13 @@
 #include "cache.h"
 #include "shell.h"
 #include <assert.h>
+#include <stdlib.h>
 
 #define DRAM_ACCESS_CYCLES 50
+
+#define IMMEDIATE_RRPV 0
+#define LONG_RRPV 2
+#define DISTANT_RRPV 3
 
 void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways,
                  uint8_t block_size) {
@@ -36,7 +41,12 @@ void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways,
 
             block->tag = 0;
             block->valid = 0;
+#ifdef LRU
             block->recency = b;
+#endif
+#ifdef RRIP
+            block->rrpv = LONG_RRPV;
+#endif
         }
     }
 }
@@ -52,6 +62,7 @@ void free_cache(Cache *c) {
     free(c->sets);
 }
 
+#ifdef LRU
 void update_lru(Cache *c, size_t set, size_t block) {
     uint32_t prev_recency = c->sets[set].blocks[block].recency;
 
@@ -67,6 +78,14 @@ void update_lru(Cache *c, size_t set, size_t block) {
     // and most recently updated block gets the lru pos 0;
     c->sets[set].blocks[block].recency = 0;
 }
+#endif
+
+#ifdef RRIP
+void update_rrip(Cache *c, size_t set, size_t block) {
+    c->sets[set].blocks[block].rrpv = IMMEDIATE_RRPV;
+}
+
+#endif
 
 uint32_t cache_access(Cache *c, uint32_t address) {
     assert((address % 4 == 0) && "Address should be multiple of 4 bytes");
@@ -80,8 +99,12 @@ uint32_t cache_access(Cache *c, uint32_t address) {
         if (c->sets[set].blocks[b].tag == tag && c->sets[set].blocks[b].valid) {
             // HIT since tag matches and block is valid
             // -> update LRU positions of set's blocks
+#ifdef LRU
             update_lru(c, set, b);
-
+#endif
+#ifdef RRIP
+            update_rrip(c, set, b);
+#endif
             return 0;
         }
     }
@@ -95,12 +118,23 @@ uint32_t cache_access(Cache *c, uint32_t address) {
     for (size_t b = 0; b < c->num_ways; b++) {
         if (!c->sets[set].blocks[b].valid) {
             victim = b;
+            found = 1;
             break;
         }
     }
 
+    // 2. blocks all valid, so replace a block
+
+#ifdef RAND
+    // random policy chooses random block in set
     if (!found) {
-        // 2. blocks all valid, so evict the oldest block in set
+        victim = rand() % c->num_ways;
+    }
+#endif
+
+#ifdef LRU
+    if (!found) {
+        // LRU chooses the least recently used block
         for (size_t b = 0; b < c->num_ways; b++) {
             if (c->sets[set].blocks[b].recency == (c->num_ways - 1)) {
                 victim = b;
@@ -108,11 +142,48 @@ uint32_t cache_access(Cache *c, uint32_t address) {
             }
         }
     }
+#endif
 
-    // found empty block, initialize it
+#ifdef RRIP
+    // https://people.csail.mit.edu/emer/media/papers/2010.06.isca.rrip.pdf
+
+    // Modify victim selection in cache_access:
+    if (!found) {
+        // Find a block with RRPV = DISTANT_RRPV
+        int found_victim = 0;
+        while (!found_victim) {
+            for (size_t b = 0; b < c->num_ways; b++) {
+                if (c->sets[set].blocks[b].rrpv == DISTANT_RRPV) {
+                    victim = b;
+                    found_victim = 1;
+                    break;
+                }
+            }
+
+            // If no DISTANT_RRPV found, increment all RRPVs and try again
+            if (!found_victim) {
+                for (size_t b = 0; b < c->num_ways; b++) {
+                    if (c->sets[set].blocks[b].valid &&
+                        c->sets[set].blocks[b].rrpv < DISTANT_RRPV) {
+                        c->sets[set].blocks[b].rrpv++;
+                    }
+                }
+            }
+        }
+    }
+    // New blocks inserted with LONG_RRPV
+    c->sets[set].blocks[victim].rrpv = LONG_RRPV;
+#endif
+
+    // replace victim block
     c->sets[set].blocks[victim].tag = tag;
     c->sets[set].blocks[victim].valid = 1;
-    update_lru(c, set, victim);
 
+#ifdef LRU
+    update_lru(c, set, victim);
+#endif
+#ifdef RRIP
+    update_rrip(c, set, victim);
+#endif
     return DRAM_ACCESS_CYCLES;
 }

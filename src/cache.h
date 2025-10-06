@@ -12,9 +12,20 @@
 #define DCACHE_SIZE (64 * 1024)
 #define DCACHE_WAYS 8
 
+// select caching policy
+#define RAND
+// #define LRU // 2-bit Static RRIP
+// #define RRIP
+
 typedef struct Block {
-    uint32_t tag, recency; // recency = 0 -> most recently used
-    uint8_t valid;         // valid bit (0 = invalid, 1 = valid)
+    uint32_t tag;
+    uint8_t valid; // valid bit (0 = invalid, 1 = valid)
+#ifdef LRU
+    uint32_t recency; // recency = 0 -> most recently used
+#endif
+#ifdef RRIP
+    uint32_t rrpv; // reference prediction values
+#endif
 } Block;
 
 typedef struct Set {
@@ -43,8 +54,14 @@ void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways,
 /* Release memory dynamically allocated for a cache */
 void free_cache(Cache *c);
 
+#ifdef LRU
 /* Mark a block withing a set as least recently used */
 void update_lru(Cache *c, size_t set, size_t block);
+#endif
+
+#ifdef RRIP
+void update_rrip(Cache *c, size_t set, size_t block);
+#endif
 
 /**
  * @param uint32_t address 4 byte aligned adress to access
