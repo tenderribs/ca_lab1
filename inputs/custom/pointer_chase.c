@@ -28,7 +28,7 @@ int main() {
 
     // Pointer-chasing loop
     Node *current = &nodes[0];
-    volatile uint32_t sum = 0;
+    volatile uint32_t sum = 0; // volatile so -03 gcc flag doesn't optimize away
 
     for (int i = 0; i < CHASE_COUNT; i++) {
         sum += current->value;
