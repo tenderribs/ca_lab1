@@ -1,63 +1,51 @@
-# Random memory access pattern (pointer chasing)
-# This will cause high cache miss rates due to unpredictable access patterns
+# compiled with godbolt.org, https://stackoverflow.com/a/63386888
+# Step 1 compile C to ASM: mips gcc 15.2.0 with flags -xc -O3 -march=mips32 -Wall -fverbose-asm -fno-delayed-branch
+# Step 2 modify assembly: 1: add .text with j main, 2. replace j $31 with syscall
+# Step 3: Assemble to Hex machine code using MARS simulator
 
-.text
-    # Initialize memory with a linked list of random pointers
-    lui $s0, 0x1000      # Base memory address: 0x10000000
-    li $s1, 16384        # Number of nodes (16K nodes)
-    li $s2, 7919         # Prime number for our PRNG
-    
-    # Initialize all nodes with both value and next pointers
-    li $t0, 0            # Loop counter
-init_loop:
-    # Calculate current node address: base + (i * 8)
-    sll $t1, $t0, 3      # Multiply by 8 (each node is 8 bytes)
-    addu $t1, $t1, $s0   # Address of current node
-    
-    # Store node index as the value
-    sw $t0, 0($t1)
-    
-    # Generate pseudo-random next pointer using LCG
-    mul $s2, $s2, 16807  # LCG multiplier (7^5)
-    andi $s2, $s2, 0x7FFFFFFF  # Apply modulus operation 2^31-1
-    
-    # Next pointer = random value % array_size
-    divu $s2, $s1
-    mfhi $t2             # Get remainder (random index)
-    
-    # Convert to address: base + (random_index * 8)
-    sll $t2, $t2, 3      # Convert index to offset
-    addu $t2, $t2, $s0   # Address of random node
-    
-    # Store the next pointer
-    sw $t2, 4($t1)
-    
-    # Increment and continue until all nodes initialized
-    addiu $t0, $t0, 1
-    bne $t0, $s1, init_loop
-
-    # Now chase pointers through memory randomly
-    li $s3, 0            # Accumulator for sum
-    li $s4, 100000       # Number of pointer jumps to perform
-    
-    # Start at first node
-    move $t0, $s0        # Current pointer
-
-chase_loop:
-    # Load value and add to accumulator
-    lw $t1, 0($t0)
-    addu $s3, $s3, $t1
-    
-    # Follow the next pointer
-    lw $t0, 4($t0)       # t0 = next pointer
-    
-    # Decrement counter and continue
-    addiu $s4, $s4, -1
-    bnez $s4, chase_loop
-    
-    # Store final result in memory
-    sw $s3, 0($s0)
-    
-    # Exit program
-    li $v0, 10
-    syscall
+.text	
+	j main
+main:
+        li      $3,131072             # 0x20000        #,
+        ori     $3,$3,0x10         #,,
+        subu    $sp,$sp,$3       #,,
+        addiu   $4,$sp,8       # tmp229,,
+        li      $7,2147418112                 # 0x7fff0000     # tmp212,
+        move    $6,$4    # ivtmp.18, tmp229
+        move    $5,$0    # i,
+        li      $3,7919           # 0x1eef         # random_seed,
+        li      $9,16807                    # 0x41a7         # tmp210,
+        ori     $7,$7,0xffff       # tmp211, tmp212,
+        li      $8,16384                    # 0x4000         # tmp216,
+$L2:
+        mul     $3,$3,$9   # _2, random_seed, tmp210
+        sw      $5,0($6)     # i, MEM[(unsigned int *)_10]
+        addiu   $6,$6,8        # ivtmp.18, ivtmp.18,
+        addiu   $5,$5,1        # i, i,
+        andi    $2,$3,0x3fff     # _15, _2,
+        sll     $2,$2,3    # _36, _15,
+        addu    $2,$4,$2         # _3, tmp229, _36
+        sw      $2,-4($6)    # _3, MEM[(struct Node * *)_10 + 4B]
+        and     $3,$3,$7   # random_seed, _2, tmp211
+        bne     $5,$8,$L2
+        nop
+        li      $5,131072             # 0x20000        # tmp217,
+        addu    $6,$4,$5         # tmp218, tmp229, tmp217
+        move    $2,$4    # current, tmp229
+        addiu   $5,$5,-31072   # ivtmp_28, tmp217,
+        sw      $0,0($6)     #, sum
+$L3:
+        lw      $3,0($6)             # sum.2_5, sum
+        lw      $4,0($2)             # current_33->value, current_33->value
+        addiu   $5,$5,-1       # ivtmp_28, ivtmp_28,
+        addu    $3,$3,$4         # _6, sum.2_5, current_33->value
+        lw      $2,4($2)             # current, current_33->next
+        sw      $3,0($6)     # _6, sum
+        bne     $5,$0,$L3
+        nop
+        li      $8,131072             # 0x20000        #,
+        ori     $8,$8,0x10         #,,
+        move    $2,$0    #,
+        addu    $sp,$sp,$8       #,,
+	li      $v0, 10       # Syscall code 10 is for exit
+	syscall              # Execute the syscall
