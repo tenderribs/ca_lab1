@@ -87,7 +87,7 @@ def process_task(task_data):
         "icache_blsz": params[2],
         "dcache_cap": params[3],
         "dcache_ways": params[4],
-        "dcache_blsz": params[4],
+        "dcache_blsz": params[5],
         "cycles": cycles,
         "ipc": ipc,
         "in_idx": in_idx,
@@ -159,6 +159,10 @@ def gen_param_sweep():
     sweep = []
     for icache in range(len(possible_params)):
         for dcache in range(len(possible_params)):
+            # for now ignore different block sizes
+            if possible_params[icache][2] != possible_params[dcache][2]:
+                continue
+
             sweep.append(
                 (
                     possible_params[icache][0],  # icache_cap
