@@ -8,7 +8,7 @@
 import sys, os, subprocess, re, glob, argparse, csv
 import multiprocessing as mp
 
-sim = "./sim"
+sim = "./sim_lru"
 
 bold = "\033[1m"
 green = "\033[0;32m"
@@ -166,7 +166,7 @@ def gen_param_sweep():
 
 
 def save_results(results):
-    outfile = f"{test_files}.csv".replace("/", "_")
+    outfile = f"{sim}_{test_files}.csv".replace("/", "_")
     with open(f"bench/{outfile}", "w", newline="") as csvfile:
         fieldnames = [f for f in results[0].keys() if f not in ["in_idx", "p_idx"]]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
