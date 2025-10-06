@@ -19,7 +19,6 @@ init_loop:
     
     # Generate pseudo-random next pointer using LCG
     mul $s2, $s2, 16807  # LCG multiplier (7^5)
-    addu $s2, $s2, 13    # LCG increment
     andi $s2, $s2, 0x7FFFFFFF  # Apply modulus operation 2^31-1
     
     # Next pointer = random value % array_size

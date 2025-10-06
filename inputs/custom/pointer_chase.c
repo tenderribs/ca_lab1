@@ -22,8 +22,9 @@ int main() {
         // Set node value to its index (like assembly)
         nodes[i].value = i;
 
-        // Generate random next pointer using same LCG algorithm
-        random_seed = (random_seed * 16807 + 13) & 0x7FFFFFFF;
+        // Generate random next pointer using MINSTD LCG algorithm
+        // https://en.wikipedia.org/wiki/Lehmer_random_number_generator
+        random_seed = (random_seed * 16807) & 0x7FFFFFFF;
         int random_index = random_seed % NUM_NODES;
 
         // Set pointer to another random node (like assembly)
