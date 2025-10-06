@@ -5,7 +5,7 @@
 
 int main() {
     int array[ARRAY_SIZE];
-    int sum = 0;
+    volatile int sum = 0;  // volatile to prevent godbolt opt
     
     // Initialize array
     for (int i = 0; i < ARRAY_SIZE; i++) {
@@ -14,7 +14,7 @@ int main() {
     
     // Test different strides
     for (int stride = 1; stride <= 128; stride *= 2) {
-        volatile sum = 0; // volatile to prevent godbolt opt
+        sum = 0;
         
         // Access with current stride
         for (int iter = 0; iter < NUM_ITERATIONS; iter++) {
