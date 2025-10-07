@@ -14,8 +14,8 @@
 
 // select caching policy
 #define RAND
-// #define LRU // 2-bit Static RRIP
-// #define RRIP
+// #define LRU
+// #define RRIP // 2-bit Static RRIP
 
 typedef struct Block {
     uint32_t tag;

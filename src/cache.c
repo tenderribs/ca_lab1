@@ -66,8 +66,7 @@ void free_cache(Cache *c) {
 void update_lru(Cache *c, size_t set, size_t block) {
     uint32_t prev_recency = c->sets[set].blocks[block].recency;
 
-    // increment the recency for valid blocks that were more recent than current
-    // one
+    // increment the recency for valid blocks that were prev. more recent
     for (size_t b = 0; b < c->num_ways; b++) {
         if (c->sets[set].blocks[b].valid &&
             c->sets[set].blocks[b].recency < prev_recency) {
