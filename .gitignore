@@ -1,4 +1,4 @@
-sim
+sim*
 basesim*
 
 sim.dSYM
@@ -7,4 +7,3 @@ basesim.dSYM
 .DS_Store
 .vscode
 .venv
-**.csv

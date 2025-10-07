@@ -38,8 +38,8 @@ void pipe_init() {
     pipe.PC = 0x00400000;
 
     // Initialize the caches
-    alloc_cache(&pipe.icache, ICACHE_SIZE, BLOCK_SIZE, ICACHE_WAYS);
-    alloc_cache(&pipe.dcache, DCACHE_SIZE, BLOCK_SIZE, DCACHE_WAYS);
+    alloc_cache(&pipe.icache, ICACHE_SIZE, ICACHE_WAYS, BLOCK_SIZE);
+    alloc_cache(&pipe.dcache, DCACHE_SIZE, DCACHE_WAYS, BLOCK_SIZE);
 }
 
 void pipe_cycle() {
