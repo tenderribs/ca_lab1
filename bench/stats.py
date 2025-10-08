@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.size"] = 10
 
-csv_path = "bench/inputs_custom_*.x.csv"
+csv_path = "bench/sorted_inputs_custom_*.x.csv"
 
 config_cols = [
     "policy",
@@ -16,6 +16,29 @@ config_cols = [
     "dcache_ways",
     "dcache_blsz",
 ]
+
+# Create a nice name mapping for tests
+test_names = {
+    "inputs/custom/looped_random_1k.x": "Looped Random 1.5K",
+    "inputs/custom/pointer_chase.x": "Pointer Chase",
+    "inputs/custom/primes.x": "Primes (Sieve)",
+    "inputs/custom/random1.x": "Random1",
+    "inputs/custom/repmovs.x": "Repmovs",
+    "inputs/custom/strided_access.x": "Strided Access",
+    "inputs/custom/test1.x": "Sequential-8",
+    "inputs/custom/stream_reuse.x": "Stream-Reuse",
+}
+
+colors = [
+    "#A23D3B",
+    "#F18F01",
+    "#C7B91D",
+    "#67C71D",
+    "#1D75C7",
+    "#5E1DC7",
+    "#C11DC7",
+    "#C71D69",
+]  # Different colors for each test
 
 
 def find_best_for_test(df, test_name):
@@ -175,6 +198,7 @@ def analyze_cache_size_effect():
 
     # tests with interesting results, all others are equal
     dcache_tests = [
+        "inputs/custom/stream_reuse.x",
         "inputs/custom/strided_access.x",
         "inputs/custom/primes.x",
         "inputs/custom/pointer_chase.x",
@@ -220,14 +244,6 @@ def analyze_cache_size_effect():
     print(test_data[["icache_cap", "ipc", "cycles"]].to_string(index=False))
 
     # ===== Plot 2: Data Cache Size Effect =====
-    # Create a nice name mapping for tests
-    test_names = {
-        "inputs/custom/strided_access.x": "Strided Access",
-        "inputs/custom/pointer_chase.x": "Pointer Chase",
-        "inputs/custom/primes.x": "Primes (Sieve)",
-    }
-
-    colors = ["#A23B72", "#F18F01", "#C73E1D"]  # Different colors for each test
 
     # Get all unique dcache sizes across all tests for consistent x-axis
     all_dcache_sizes = set()
@@ -290,10 +306,54 @@ def analyze_block_size_effect():
     # all tests are interesting here
     tests = df["input"].unique()
 
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 6))
+    fig.suptitle(
+        "Effect of Block Size on Performance (LRU, 2KB I-Cache 4-way, 64KB D-Cache 8-way)",
+        fontsize=14,
+    )
+
+    # Get all unique block sizes for consistent x-axis
+    all_block_sizes = set()
+
     for idx, test in enumerate(tests):
-        test_data = df[(df["input"] == test)]
-        print(f"\ninst cache {test}")
-        print(test_data)
+        test_data = df[df["input"] == test]
+        test_data = test_data.sort_values(by=["icache_blsz"])
+
+        all_block_sizes.update(test_data["icache_blsz"])
+
+        ax.plot(
+            test_data["icache_blsz"],
+            test_data["ipc"],
+            marker="o",
+            linewidth=2,
+            markersize=8,
+            label=test_names[test],
+            color=colors[idx],
+        )
+
+        # Print data for reference
+        print(f"\nBlock Size Effect - {test}")
+        print(
+            test_data[["icache_blsz", "dcache_blsz", "ipc", "cycles"]].to_string(
+                index=False
+            )
+        )
+
+    ax.set_xlabel("Block Size (bytes)", fontsize=11)
+    ax.set_ylabel("IPC", fontsize=11)
+    ax.set_title("Block Size Effect", fontsize=11)
+    ax.legend(fontsize=10, loc="best")
+    ax.grid(True, alpha=0.3, linestyle="--")
+    ax.set_xscale("log", base=2)
+
+    # Set custom x-axis ticks at actual data points
+    sorted_sizes = sorted(all_block_sizes)
+    ax.set_xticks(sorted_sizes)
+    ax.set_xticklabels([f"{int(x)}" for x in sorted_sizes])
+
+    plt.tight_layout()
+    plt.show()
 
 
 # Effect of Block Size on Performance (LRU, 32B blocks)
@@ -303,7 +363,7 @@ def analyze_associativity_effect():
 
     # Filter for baseline configuration
     df = df[
-        (df["policy"] == "lru")
+        (df["policy"] == "rand")
         & (df["icache_blsz"] == 64)
         & (df["dcache_blsz"] == 64)
         & (df["icache_cap"] == 2 * 1024)
@@ -312,7 +372,30 @@ def analyze_associativity_effect():
 
     # all tests are interesting here
     tests = df["input"].unique()
+    # here actually look at
+    # tests = ["inputs/custom/strided_access.x", "inputs/custom/stream_reuse.x"]
 
+    for idx, test in enumerate(tests):
+        test_data = df[(df["input"] == test)]
+        print(f"\ninst cache {test}")
+        print(test_data)
+
+
+def analyze_policy_effect():
+    print("\n\n\n============ analyze_policy_effect ============")
+    df = df = pd.read_csv(csv_path)
+
+    # Filter for baseline configuration
+    df = df[
+        (df["icache_blsz"] == 32)
+        & (df["icache_ways"] == 4)
+        & (df["dcache_ways"] == 8)
+        & (df["icache_cap"] == 2 * 1024)
+        & (df["dcache_cap"] == 64 * 1024)
+    ]
+
+    # all tests are interesting here
+    tests = ["inputs/custom/strided_access.x", "inputs/custom/stream_reuse.x"]
     for idx, test in enumerate(tests):
         test_data = df[(df["input"] == test)]
         print(f"\ninst cache {test}")
@@ -323,6 +406,7 @@ if __name__ == "__main__":
     # best_overall()
     # best_strided()
     # best_practical()
-    analyze_cache_size_effect()
-    analyze_block_size_effect()
+    # analyze_cache_size_effect()
+    # analyze_block_size_effect()
     analyze_associativity_effect()
+    # analyze_policy_effect()
