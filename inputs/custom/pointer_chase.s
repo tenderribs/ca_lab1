@@ -1,9 +1,9 @@
-# compiled with godbolt.org, https://stackoverflow.com/a/63386888
+# compiled with https://godbolt.org, https://stackoverflow.com/a/63386888
 # Step 1 compile C to ASM: mips gcc 15.2.0 with flags -xc -O3 -march=mips32 -Wall -fverbose-asm -fno-delayed-branch
 # Step 2 modify assembly: 1: add .text with j main, 2. replace j $31 with syscall
 # Step 3: Assemble to Hex machine code using MARS simulator
 
-.text	
+.text
 	j main
 main:
         li      $3,131072             # 0x20000        #,
