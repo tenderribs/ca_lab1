@@ -8,8 +8,6 @@
 import sys, os, subprocess, re, glob, argparse, csv
 import multiprocessing as mp
 
-# sim = "./sim_lru"
-
 bold = "\033[1m"
 green = "\033[0;32m"
 red = "\033[0;31m"
@@ -145,7 +143,7 @@ def filter_stats(out):
 
 def gen_param_sweep():
     block_sizes = [16, 32, 64, 128, 256, 512]
-    cache_sizes = [1024 * (2**exp) for exp in range(1, 10 + 1, 1)]  # 1KB to 1MB
+    cache_sizes = [1024 * (2**exp) for exp in range(0, 10 + 1, 1)]  # 1KB to 1MB
     ways = [1, 2, 4, 8, 16]
 
     possible_params = []
