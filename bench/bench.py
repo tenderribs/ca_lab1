@@ -142,7 +142,7 @@ def filter_stats(out):
 
 
 def gen_param_sweep():
-    block_sizes = [16, 32, 64, 128, 256, 512]
+    block_sizes = [4, 8, 16, 32, 64, 128, 256, 512]
     cache_sizes = [1024 * (2**exp) for exp in range(0, 10 + 1, 1)]  # 1KB to 1MB
     ways = [1, 2, 4, 8, 16]
 
