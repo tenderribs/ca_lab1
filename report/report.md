@@ -97,6 +97,8 @@ To compare cache parameters with a baseline, a reference configuration was used 
 
 ![Effect of Cache Size on IPC (LRU, 4-Way I-Cache, 8-Way D-Cache, 32B Blocks)](./plots/cache_size.eps){#fig:cache-size}
 
+![Effect of Block Size on Performance (LRU, 2KB I-Cache 4-way, 64KB D-Cache 8-way)](./plots/block_size.eps)
+
 
 ### Effect of Block Size
 
