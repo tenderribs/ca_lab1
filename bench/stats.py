@@ -407,6 +407,6 @@ if __name__ == "__main__":
     # best_strided()
     # best_practical()
     # analyze_cache_size_effect()
-    # analyze_block_size_effect()
-    analyze_associativity_effect()
+    analyze_block_size_effect()
+    # analyze_associativity_effect()
     # analyze_policy_effect()
