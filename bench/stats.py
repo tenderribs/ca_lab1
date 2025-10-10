@@ -169,7 +169,7 @@ def analyze_cache_size_effect():
     ax1.set_xlabel("Instruction Cache Size (KB)", fontsize=11)
     ax1.set_ylabel("IPC", fontsize=11)
     ax1.set_title(
-        "Instruction Cache Size Effect\n(looped_random_1k, 64KB D-Cache)", fontsize=11
+        "Instruction Cache Size Effect\n(Looped Random 1.5K, 64KB D-Cache)", fontsize=11
     )
     ax1.grid(True, alpha=0.3, linestyle="--")
     ax1.set_xscale("log", base=2)
@@ -188,6 +188,8 @@ def analyze_cache_size_effect():
     all_dcache_sizes = set()
 
     for idx, test in enumerate(dcache_tests):
+        if test == "inputs/custom/looped_random_1k.x":
+            continue
         # with 2KB icache
         test_data = df[(df["input"] == test) & (df["icache_cap"] == 2 * 1024)]
         test_data = test_data.sort_values(by=["dcache_cap"])
@@ -302,9 +304,10 @@ def analyze_associativity_effect():
 
     # Filter for baseline configuration
     df = df[
-        (df["policy"] == "rand")
-        & (df["icache_blsz"] == 64)
-        & (df["dcache_blsz"] == 64)
+        (df["policy"] == "lru")
+        & (df["icache_ways"] == 4)
+        & (df["icache_blsz"] == 32)
+        & (df["dcache_blsz"] == 32)
         & (df["icache_cap"] == 2 * 1024)
         & (df["dcache_cap"] == 64 * 1024)
     ]
@@ -334,7 +337,8 @@ def analyze_policy_effect():
     ]
 
     # all tests are interesting here
-    tests = ["inputs/custom/strided_access.x", "inputs/custom/stream_reuse.x"]
+    # tests = ["inputs/custom/strided_access.x", "inputs/custom/stream_reuse.x"]
+    tests = df["input"].unique()
     for idx, test in enumerate(tests):
         test_data = df[(df["input"] == test)]
         print(f"\ninst cache {test}")
@@ -344,6 +348,6 @@ def analyze_policy_effect():
 if __name__ == "__main__":
     # best_overall()
     # analyze_cache_size_effect()
-    analyze_block_size_effect()
+    # analyze_block_size_effect()
     # analyze_associativity_effect()
-    # analyze_policy_effect()
+    analyze_policy_effect()

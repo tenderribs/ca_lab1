@@ -64,7 +64,7 @@ To comprehensively explore the cache behavior, I prepared a set of program that 
 
 1. **Sequential-8**: Performs contiguous sequential memory access with high spatial locality. This scenario lets the D-Cache demonstrate it's ability to exploit sequential access patterns.
 2. **Pointer Chase (custom)**: Traverses a large linked list with pseudo-random memory accesses (using the MINSTD LCG). This represents irregular D-Cache access with low spatial locality. 
-3. **Strided Access (custom)**: Accesses array elements with a fixed stride, not aligned with the block size. This tests the effect of the D-Cache block size when only a small amount of data from a block is used.
+3. **Strided Access (custom)**: Accesses array elements with progressively larger strides (1, 2, 4, 8, 16...), creating a pattern that causes extensive thrashing in smaller D-Caches. 
 4. **Stream Reuse (custom)**: Combines streaming accesses with temporal reuse by revisiting previously accessed data. This tests replacement policies' ability to distinguish between data that will be reused versus data accessed only once, making it particularly relevant for evaluating LRU versus scan-resistant policies like RRIP.
 5. **Looped Random 1k (custom)**: Repeatedly executes randomly generated instructions within a ~6KB instruction footprint, demonstrating the effect of I-cache size. This stresses the I-Cache with a working set that fits in larger I-caches but thrashes smaller ones.
 6. **Primes (Sieve)**: Implements the Sieve of Eratosthenes for finding prime numbers. This represents a "real-world" computational workload with a mixed memory access pattern.
@@ -81,31 +81,93 @@ I parametrized the sim implementation to support runtime configuration of the ca
 The sweep includes only the physically valid combinations of the cache parameters, i.e. where the set size is at least the block size. For simplicity, D-Caches and I-Caches with different block sizes or different replacement policies aren't considered. This doesn't seem to be common practice in real world L1 caches.
 
 
-## Results and Discussion
+## Results and Observations
 
-To compare cache parameters with a baseline, a reference configuration was used (LRU replacement policy, 64 KB 8-Way D-Cache and 2KB 4-Way I-Cache with a 32 byte block size). Then with the remaining parameters kept fixed, the cache size, associativity, block size and replacement policy were varied.
+To systematically evaluate cache performance, I established a baseline configuration and varied one parameter at a time while holding others constant. The baseline configuration consists of an LRU replacement policy with a 64 KB 8-way D-Cache, a 2 KB 4-way I-Cache, and 32-byte blocks for both caches.
+
 
 ### Effect of Cache Size
 
+![Effect of Cache Size on IPC (LRU, 4-Way I-Cache, 8-Way D-Cache, 32B Blocks)](./plots/cache_size.eps){#fig:cache-size}
+
 #### I-Cache
 
-[@fig:cache-size] shows the effect of cache size on IPC across different workloads. For the I-Cache size, the most important test was random looped 1k test. That test's roughly 1.5k instructions fit in about 6KB of memory, so repeated accesses could benefit from caching. So in the plot you see the IPC gets a lot better on repeated access after the I-Cache size goes from 4KB to 8KB. Most of the programs in the benchmarking suite fit within 2KB of I-Cache, so the I-Cache size has to be selected to cache the typical program size. 
+In [@fig:cache-size], the effect of cache size on IPC across different workloads is demonstrated. Without jumps or branches, the I-Cache is generally accessed sequentially when the program counter gets incremented. Therefore the I-Cache size yields a sharp performance increase when the cache becomes large enough to hold a program's instruction footprint. The Looped Random 1k program, contains approximately 1,500 instructions occupying roughly 6 KB of memory. So the IPC improves as I-Cache size increases from 4 KB to 8 KB, showing the benefit of eliminating instruction cache misses once the entire working set fits in cache.
+
+Most programs in the benchmarking suite have small instruction footprints (<2KB), showing minimal performance variation across I-Cache sizes. This suggest that in the real-world, programs with larger instruction working sets require proportionally larger I-Caches to avoid performance degradation.
 
 #### D-Cache
 
+The varying effects of D-Cache size across different memory access patterns are shown in [@fig:cache-size]. Two performance trends are discernible:
 
+##### Performance-scaling programs:
 
-![Effect of Cache Size on IPC (LRU, 4-Way I-Cache, 8-Way D-Cache, 32B Blocks)](./plots/cache_size.eps){#fig:cache-size}
+Primes, Strided Access, and Stream Reuse show significant performance gains with increasing cache size. For these programs, performance exhibits a sharp transition when the cache capacity exceeds the working set size. 
 
-![Effect of Block Size on Performance (LRU, 2KB I-Cache 4-way, 64KB D-Cache 8-way)](./plots/block_size.eps)
+The Primes benchmark has a working set of about 64KB (the sieve array), resulting in improved IPC when D-Cache size reaches this threshold. 
+
+Similarly, Strided Access benefits once the cache can hold its entire array $(64\cdot1024\cdot4B = 256KB)$. In configurations where the cache capacity is insufficient, thrashing occurs as each new stride pattern walks through memory faster than the cache can accommodate, causing previously cached blocks to be evicted before they can be reused. When cache size increases to match the working set (256KB), thrashing is eliminated because all array elements can remain resident simultaneously.
+
+Stream Reuse's IPC performance increases once after the 8KB of the frequently accessed working set fit inside the cache. The performance increases again once the 128KB of streaming data fit inside the cache too. This eliminates most capacity misses and reduces thrashing from the streaming accesses displacing hot data.
+
+##### Limited-benefit programs: 
+
+Pointer Chase shows no improvement with larger cache sizes. Due to the random access pattern, there is little temporal locality for the cache to exploit. Even when the entire  working set fits inside the cache, the random access pattern creates frequent conflict misses among the sets. Furthermore, only 2B out of the 32B blocks are actually used per access, leading to cache pollution. In fact 93.75% of each 32B block contains irrelevant information. This combination of random access pattern and poor use of cache space means even large caches provide limited benefit. 
+
+#### Takeaway
+
+These observations highlight how memory access patterns determine the relationship between cache size and performance. Programs with well-defined working sets and some degree of locality benefit most from appropriately sized caches, while those with no locality don't benefit from cache size.
+
 
 
 ### Effect of Block Size
 
+As shown in [@fig:block-size], increasing the block size generally improves performance up to 128B for most programs, after which performance drastically declines. This pattern reflects the trade-off in block size selection:
+
+**Size <= 128B**: Most programs benefit from larger block sizes (until 128B) for two main reasons: First, the 50-cycle miss penalty is shared by more bytes per miss. Second, in sequential access patterns the data in the next few requests effectively gets prefetched.
+
+**Size > 128B**: The performance collapses beyond a block size of 128B, because larger blocks mean fewer sets. This creates conflict misses, since unrelated addresses map to the same set. Furthermore, programs with irregular access patterns like Pointer Chase effectively waste a lot of the space in a block.
+
+#### Takeaway
+
+These observations demonstrate that optimal block size depends on balancing spatial locality benefits against set reduction costs. 
+
+
+![Effect of Block Size on Performance (LRU, 2KB I-Cache 4-way, 64KB D-Cache 8-way)](./plots/block_size.eps){#fig:block-size}
+
 ### Effect of Associativity
+
+
+
+As can be seen in [@tbl:associativity], most programs (Pointer Chase, Primes, Sequential-8) show essentially no performance variation across associativity levels. For these workloads, going from direct-mapped (1-way) to fully associative (16-way) produces identical cycle counts. This suggests that conflict misses are not a significant performance factor compared to capacity misses or compulsory misses for these programs.
+
+| Program        | 1-way     | 2-way | 4-way | 8-way | 16-way    |
+| -------------- | --------- | ----- | ----- | ----- | --------- |
+| Pointer Chase  | 0.664     | 0.664 | 0.664 | 0.664 | 0.664     |
+| Primes         | 0.677     | 0.677 | 0.677 | 0.677 | 0.677     |
+| Sequential-8   | 0.421     | 0.421 | 0.421 | 0.421 | 0.421     |
+| Stream Reuse   | **0.453** | 0.455 | 0.455 | 0.455 | 0.455     |
+| Strided Access | 0.287     | 0.287 | 0.287 | 0.287 | **0.286** |
+: Effect of D-Cache Associativity on IPC (LRU, 2KB 4-way I-Cache, 64KB D-Cache) {#tbl:associativity}
+
+Interestingly, Stream Reuse shows a small approximately 0.25% increase in performance when increasing from 1-way to 2-way associativity. This stems from its use pattern, where the streaming data can share a set with the frequently accessed data on tag conflicts.
+
+#### Takeaway
+
+This demonstrates that higher levels of D-Cache associativity aren't justified in their added complexity. The performance gain is minimal at beyond 2-way associative sets.
 
 ### Replacement Policy Comparison
 
-### Discussion of Observations
+
+| Program        | Random    | LRU   | RRIP  |
+| -------------- | --------- | ----- | ----- |
+| Pointer Chase  | 0.664     | 0.664 | 0.664 |
+| Primes         | 0.677     | 0.677 | 0.677 |
+| Sequential-8   | 0.421     | 0.421 | 0.421 |
+| Stream Reuse   | **0.484** | 0.455 | 0.455 |
+| Strided Access | **0.290** | 0.287 | 0.287 |
+: Effect of Replacement Policy on IPC (2KB 4-way I-Cache, 64KB 8-Way D-Cache) {#tbl:policy}
+
+As shown in [@tbl:policy], changing the caching policy makes no difference in cache IPC performance for the Pointer Chase, Primes and Sequential-8 programs. Meanwhile Stream Reuse and Strided Access, the programs that benefit from high cache scan resistance, show a 6.02% and 0.99% increase in IPC by using the LRU and RRIP policies instead of evicting a random block. This shows that they benefit from trying to keep temporally local data inside the cache.
 
 ## Citations

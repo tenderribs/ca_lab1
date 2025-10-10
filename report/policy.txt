@@ -1,0 +1,38 @@
+============ analyze_policy_effect ============
+
+inst cache inputs/custom/looped_random_1k.x
+                                input policy  icache_cap  icache_ways  icache_blsz  dcache_cap  dcache_ways  dcache_blsz    cycles    ipc
+853  inputs/custom/looped_random_1k.x   rand        2048            4           32       65536            8           32  15591583  0.136
+854  inputs/custom/looped_random_1k.x   rrip        2048            4           32       65536            8           32  15742117  0.134
+855  inputs/custom/looped_random_1k.x    lru        2048            4           32       65536            8           32  15742117  0.134
+908  inputs/custom/looped_random_1k.x    lru        2048            4           32       65536            8           32  15742117  0.134
+
+inst cache inputs/custom/pointer_chase.x
+                               input policy  icache_cap  icache_ways  icache_blsz  dcache_cap  dcache_ways  dcache_blsz   cycles    ipc
+13312  inputs/custom/pointer_chase.x    lru        2048            4           32       65536            8           32  1301837  0.664
+13326  inputs/custom/pointer_chase.x   rand        2048            4           32       65536            8           32  1301837  0.664
+13342  inputs/custom/pointer_chase.x   rrip        2048            4           32       65536            8           32  1301837  0.664
+
+inst cache inputs/custom/primes.x
+                        input policy  icache_cap  icache_ways  icache_blsz  dcache_cap  dcache_ways  dcache_blsz   cycles    ipc
+70653  inputs/custom/primes.x    lru        2048            4           32       65536            8           32  3098085  0.677
+70677  inputs/custom/primes.x   rand        2048            4           32       65536            8           32  3098085  0.677
+70701  inputs/custom/primes.x   rrip        2048            4           32       65536            8           32  3098085  0.677
+
+inst cache inputs/custom/stream_reuse.x
+                               input policy  icache_cap  icache_ways  icache_blsz  dcache_cap  dcache_ways  dcache_blsz    cycles    ipc
+129790  inputs/custom/stream_reuse.x   rand        2048            4           32       65536            8           32  10959282  0.484
+129791  inputs/custom/stream_reuse.x    lru        2048            4           32       65536            8           32  11660832  0.455
+129793  inputs/custom/stream_reuse.x   rrip        2048            4           32       65536            8           32  11660832  0.455
+
+inst cache inputs/custom/strided_access.x
+                                 input policy  icache_cap  icache_ways  icache_blsz  dcache_cap  dcache_ways  dcache_blsz    cycles    ipc
+197422  inputs/custom/strided_access.x   rand        2048            4           32       65536            8           32  32450018  0.290
+197445  inputs/custom/strided_access.x    lru        2048            4           32       65536            8           32  32773118  0.287
+197465  inputs/custom/strided_access.x   rrip        2048            4           32       65536            8           32  32773118  0.287
+
+inst cache inputs/custom/test1.x
+                        input policy  icache_cap  icache_ways  icache_blsz  dcache_cap  dcache_ways  dcache_blsz  cycles    ipc
+254766  inputs/custom/test1.x    lru        2048            4           32       65536            8           32  934042  0.421
+254790  inputs/custom/test1.x   rand        2048            4           32       65536            8           32  934042  0.421
+254816  inputs/custom/test1.x   rrip        2048            4           32       65536            8           32  934042  0.421

@@ -1,0 +1,143 @@
+
+
+============ analyze_associativity_effect ============
+
+inst cache inputs/custom/pointer_chase.x
+                               input policy  icache_cap  icache_ways  icache_blsz  dcache_cap  dcache_ways  dcache_blsz   cycles   ipc
+13226  inputs/custom/pointer_chase.x   rand        2048            1           64       65536            8           64  1199239  0.72
+13227  inputs/custom/pointer_chase.x   rand        2048            1           64       65536           16           64  1199239  0.72
+13228  inputs/custom/pointer_chase.x   rand        2048            2           64       65536           16           64  1199239  0.72
+13229  inputs/custom/pointer_chase.x   rand        2048            2           64       65536            8           64  1199239  0.72
+13230  inputs/custom/pointer_chase.x   rand        2048            4           64       65536            8           64  1199239  0.72
+13231  inputs/custom/pointer_chase.x   rand        2048            4           64       65536           16           64  1199239  0.72
+13232  inputs/custom/pointer_chase.x   rand        2048            8           64       65536            8           64  1199239  0.72
+13233  inputs/custom/pointer_chase.x   rand        2048            8           64       65536           16           64  1199239  0.72
+13234  inputs/custom/pointer_chase.x   rand        2048           16           64       65536            8           64  1199239  0.72
+13235  inputs/custom/pointer_chase.x   rand        2048           16           64       65536           16           64  1199239  0.72
+13281  inputs/custom/pointer_chase.x   rand        2048            1           64       65536            1           64  1199339  0.72
+13282  inputs/custom/pointer_chase.x   rand        2048            1           64       65536            2           64  1199339  0.72
+13283  inputs/custom/pointer_chase.x   rand        2048            1           64       65536            4           64  1199339  0.72
+13284  inputs/custom/pointer_chase.x   rand        2048            2           64       65536            1           64  1199339  0.72
+13285  inputs/custom/pointer_chase.x   rand        2048            2           64       65536            2           64  1199339  0.72
+13286  inputs/custom/pointer_chase.x   rand        2048            2           64       65536            4           64  1199339  0.72
+13287  inputs/custom/pointer_chase.x   rand        2048            4           64       65536            2           64  1199339  0.72
+13288  inputs/custom/pointer_chase.x   rand        2048            4           64       65536            1           64  1199339  0.72
+13289  inputs/custom/pointer_chase.x   rand        2048            4           64       65536            4           64  1199339  0.72
+13290  inputs/custom/pointer_chase.x   rand        2048            8           64       65536            2           64  1199339  0.72
+13291  inputs/custom/pointer_chase.x   rand        2048            8           64       65536            1           64  1199339  0.72
+13292  inputs/custom/pointer_chase.x   rand        2048            8           64       65536            4           64  1199339  0.72
+13293  inputs/custom/pointer_chase.x   rand        2048           16           64       65536            1           64  1199339  0.72
+13294  inputs/custom/pointer_chase.x   rand        2048           16           64       65536            2           64  1199339  0.72
+13295  inputs/custom/pointer_chase.x   rand        2048           16           64       65536            4           64  1199339  0.72
+
+inst cache inputs/custom/primes.x
+                        input policy  icache_cap  icache_ways  icache_blsz  dcache_cap  dcache_ways  dcache_blsz   cycles    ipc
+70589  inputs/custom/primes.x   rand        2048            1           64       65536            1           64  3046787  0.688
+70590  inputs/custom/primes.x   rand        2048            1           64       65536            2           64  3046787  0.688
+70591  inputs/custom/primes.x   rand        2048            1           64       65536            4           64  3046787  0.688
+70592  inputs/custom/primes.x   rand        2048            1           64       65536            8           64  3046787  0.688
+70593  inputs/custom/primes.x   rand        2048            1           64       65536           16           64  3046787  0.688
+70594  inputs/custom/primes.x   rand        2048            2           64       65536            1           64  3046787  0.688
+70595  inputs/custom/primes.x   rand        2048            2           64       65536            2           64  3046787  0.688
+70596  inputs/custom/primes.x   rand        2048            2           64       65536            4           64  3046787  0.688
+70597  inputs/custom/primes.x   rand        2048            2           64       65536            8           64  3046787  0.688
+70598  inputs/custom/primes.x   rand        2048            2           64       65536           16           64  3046787  0.688
+70599  inputs/custom/primes.x   rand        2048            4           64       65536            2           64  3046787  0.688
+70600  inputs/custom/primes.x   rand        2048            4           64       65536            1           64  3046787  0.688
+70601  inputs/custom/primes.x   rand        2048            4           64       65536            4           64  3046787  0.688
+70602  inputs/custom/primes.x   rand        2048            4           64       65536            8           64  3046787  0.688
+70603  inputs/custom/primes.x   rand        2048            4           64       65536           16           64  3046787  0.688
+70604  inputs/custom/primes.x   rand        2048            8           64       65536            1           64  3046787  0.688
+70605  inputs/custom/primes.x   rand        2048            8           64       65536            2           64  3046787  0.688
+70606  inputs/custom/primes.x   rand        2048            8           64       65536            4           64  3046787  0.688
+70607  inputs/custom/primes.x   rand        2048            8           64       65536            8           64  3046787  0.688
+70608  inputs/custom/primes.x   rand        2048            8           64       65536           16           64  3046787  0.688
+70609  inputs/custom/primes.x   rand        2048           16           64       65536            1           64  3046787  0.688
+70610  inputs/custom/primes.x   rand        2048           16           64       65536            2           64  3046787  0.688
+70611  inputs/custom/primes.x   rand        2048           16           64       65536            4           64  3046787  0.688
+70612  inputs/custom/primes.x   rand        2048           16           64       65536            8           64  3046787  0.688
+70613  inputs/custom/primes.x   rand        2048           16           64       65536           16           64  3046787  0.688
+
+inst cache inputs/custom/stream_reuse.x
+                               input policy  icache_cap  icache_ways  icache_blsz  dcache_cap  dcache_ways  dcache_blsz   cycles    ipc
+129829  inputs/custom/stream_reuse.x   rand        2048            1           64       65536            1           64  9437834  0.562
+129831  inputs/custom/stream_reuse.x   rand        2048            1           64       65536            2           64  9116084  0.581
+129833  inputs/custom/stream_reuse.x   rand        2048            1           64       65536            4           64  9060784  0.585
+129836  inputs/custom/stream_reuse.x   rand        2048            1           64       65536            8           64  9023984  0.587
+129840  inputs/custom/stream_reuse.x   rand        2048            1           64       65536           16           64  9017884  0.588
+129842  inputs/custom/stream_reuse.x   rand        2048            2           64       65536            1           64  9437834  0.562
+129846  inputs/custom/stream_reuse.x   rand        2048            2           64       65536            2           64  9116084  0.581
+129849  inputs/custom/stream_reuse.x   rand        2048            2           64       65536            4           64  9060784  0.585
+129851  inputs/custom/stream_reuse.x   rand        2048            2           64       65536            8           64  9023984  0.587
+129855  inputs/custom/stream_reuse.x   rand        2048            2           64       65536           16           64  9017884  0.588
+129858  inputs/custom/stream_reuse.x   rand        2048            4           64       65536            1           64  9437834  0.562
+129860  inputs/custom/stream_reuse.x   rand        2048            4           64       65536            2           64  9116084  0.581
+129864  inputs/custom/stream_reuse.x   rand        2048            4           64       65536            4           64  9060784  0.585
+129867  inputs/custom/stream_reuse.x   rand        2048            4           64       65536            8           64  9023984  0.587
+129869  inputs/custom/stream_reuse.x   rand        2048            4           64       65536           16           64  9017884  0.588
+129873  inputs/custom/stream_reuse.x   rand        2048            8           64       65536            1           64  9437834  0.562
+129876  inputs/custom/stream_reuse.x   rand        2048            8           64       65536            2           64  9116084  0.581
+129878  inputs/custom/stream_reuse.x   rand        2048            8           64       65536            4           64  9060784  0.585
+129881  inputs/custom/stream_reuse.x   rand        2048            8           64       65536            8           64  9023984  0.587
+129884  inputs/custom/stream_reuse.x   rand        2048            8           64       65536           16           64  9017884  0.588
+129887  inputs/custom/stream_reuse.x   rand        2048           16           64       65536            1           64  9437834  0.562
+129891  inputs/custom/stream_reuse.x   rand        2048           16           64       65536            2           64  9116084  0.581
+129893  inputs/custom/stream_reuse.x   rand        2048           16           64       65536            4           64  9060784  0.585
+129897  inputs/custom/stream_reuse.x   rand        2048           16           64       65536           16           64  9017884  0.588
+129901  inputs/custom/stream_reuse.x   rand        2048           16           64       65536            8           64  9023984  0.587
+
+inst cache inputs/custom/strided_access.x
+                                 input policy  icache_cap  icache_ways  icache_blsz  dcache_cap  dcache_ways  dcache_blsz    cycles    ipc
+197340  inputs/custom/strided_access.x   rand        2048            1           64       65536           16           64  24177570  0.389
+197341  inputs/custom/strided_access.x   rand        2048            2           64       65536           16           64  24177570  0.389
+197342  inputs/custom/strided_access.x   rand        2048            4           64       65536           16           64  24177570  0.389
+197343  inputs/custom/strided_access.x   rand        2048            8           64       65536           16           64  24177570  0.389
+197344  inputs/custom/strided_access.x   rand        2048           16           64       65536           16           64  24177570  0.389
+197345  inputs/custom/strided_access.x   rand        2048            1           64       65536            8           64  24192070  0.388
+197346  inputs/custom/strided_access.x   rand        2048            2           64       65536            8           64  24192070  0.388
+197347  inputs/custom/strided_access.x   rand        2048            4           64       65536            8           64  24192070  0.388
+197348  inputs/custom/strided_access.x   rand        2048            8           64       65536            8           64  24192070  0.388
+197349  inputs/custom/strided_access.x   rand        2048           16           64       65536            8           64  24192070  0.388
+197350  inputs/custom/strided_access.x   rand        2048            1           64       65536            4           64  24227670  0.388
+197351  inputs/custom/strided_access.x   rand        2048            2           64       65536            4           64  24227670  0.388
+197352  inputs/custom/strided_access.x   rand        2048            4           64       65536            4           64  24227670  0.388
+197353  inputs/custom/strided_access.x   rand        2048            8           64       65536            4           64  24227670  0.388
+197354  inputs/custom/strided_access.x   rand        2048           16           64       65536            4           64  24227670  0.388
+197355  inputs/custom/strided_access.x   rand        2048            1           64       65536            2           64  24304220  0.387
+197356  inputs/custom/strided_access.x   rand        2048            2           64       65536            2           64  24304220  0.387
+197357  inputs/custom/strided_access.x   rand        2048            4           64       65536            2           64  24304220  0.387
+197358  inputs/custom/strided_access.x   rand        2048            8           64       65536            2           64  24304220  0.387
+197359  inputs/custom/strided_access.x   rand        2048           16           64       65536            2           64  24304220  0.387
+197405  inputs/custom/strided_access.x   rand        2048            1           64       65536            1           64  24471120  0.384
+197406  inputs/custom/strided_access.x   rand        2048            2           64       65536            1           64  24471120  0.384
+197407  inputs/custom/strided_access.x   rand        2048            4           64       65536            1           64  24471120  0.384
+197408  inputs/custom/strided_access.x   rand        2048            8           64       65536            1           64  24471120  0.384
+197409  inputs/custom/strided_access.x   rand        2048           16           64       65536            1           64  24471120  0.384
+
+inst cache inputs/custom/test1.x
+                        input policy  icache_cap  icache_ways  icache_blsz  dcache_cap  dcache_ways  dcache_blsz  cycles    ipc
+254703  inputs/custom/test1.x   rand        2048            1           64       65536            2           64  729194  0.539
+254704  inputs/custom/test1.x   rand        2048            1           64       65536            4           64  729194  0.539
+254705  inputs/custom/test1.x   rand        2048            1           64       65536            1           64  729194  0.539
+254706  inputs/custom/test1.x   rand        2048            1           64       65536            8           64  729194  0.539
+254707  inputs/custom/test1.x   rand        2048            1           64       65536           16           64  729194  0.539
+254708  inputs/custom/test1.x   rand        2048            2           64       65536            1           64  729194  0.539
+254709  inputs/custom/test1.x   rand        2048            2           64       65536            2           64  729194  0.539
+254710  inputs/custom/test1.x   rand        2048            2           64       65536            4           64  729194  0.539
+254711  inputs/custom/test1.x   rand        2048            2           64       65536            8           64  729194  0.539
+254712  inputs/custom/test1.x   rand        2048            2           64       65536           16           64  729194  0.539
+254713  inputs/custom/test1.x   rand        2048            4           64       65536            1           64  729194  0.539
+254714  inputs/custom/test1.x   rand        2048            4           64       65536            2           64  729194  0.539
+254715  inputs/custom/test1.x   rand        2048            4           64       65536            8           64  729194  0.539
+254716  inputs/custom/test1.x   rand        2048            4           64       65536            4           64  729194  0.539
+254717  inputs/custom/test1.x   rand        2048            4           64       65536           16           64  729194  0.539
+254718  inputs/custom/test1.x   rand        2048            8           64       65536            1           64  729194  0.539
+254719  inputs/custom/test1.x   rand        2048            8           64       65536            2           64  729194  0.539
+254720  inputs/custom/test1.x   rand        2048            8           64       65536            4           64  729194  0.539
+254721  inputs/custom/test1.x   rand        2048            8           64       65536            8           64  729194  0.539
+254722  inputs/custom/test1.x   rand        2048            8           64       65536           16           64  729194  0.539
+254723  inputs/custom/test1.x   rand        2048           16           64       65536            1           64  729194  0.539
+254724  inputs/custom/test1.x   rand        2048           16           64       65536            2           64  729194  0.539
+254725  inputs/custom/test1.x   rand        2048           16           64       65536            4           64  729194  0.539
+254726  inputs/custom/test1.x   rand        2048           16           64       65536            8           64  729194  0.539
+254727  inputs/custom/test1.x   rand        2048           16           64       65536           16           64  729194  0.539
