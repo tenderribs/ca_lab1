@@ -12,3 +12,9 @@ Run the benchmarking python script in the workspace root directory. Can change t
 ```sh
 python3 bench/bench.py
 ```
+
+Plot stuff with 
+
+```sh
+python3 bench/stats.py
+```
