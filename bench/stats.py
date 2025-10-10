@@ -120,65 +120,6 @@ def best_overall():
     best.to_csv("bench/best_overall.csv", index=False)
 
 
-def best_strided():
-    # disinclude the stride test because this favours impractically large data caches + block sizes
-    input_tests = [
-        "pointer_chase",
-        # "strided_access",
-        "primes",
-        "random1",
-        "repmovs",
-        "test1",
-    ]
-
-    # find best performing configs on tests excluding the strided access
-    df = pd.read_csv(csv_path)
-
-    best = find_common_best_configs(df, input_tests)
-    best = best.sort_values(
-        ["icache_cap", "dcache_cap", "dcache_blsz", "policy"],
-        ascending=[True, True, False, False],
-    )
-
-    # for these best configs, look for the least cycles used within the pointer_chase results
-    pc_results = df[df["input"] == "inputs/custom/strided_access.x"]
-    best_sa_res = pd.merge(pc_results, best, how="right", on=config_cols)
-    best_sa_res = best_sa_res.sort_values(
-        ["cycles", "icache_cap", "dcache_cap", "dcache_blsz", "policy"],
-        ascending=[True, True, True, False, False],
-    )
-    best_sa_res.to_csv("bench/best_strided.csv", index=False)
-
-
-def best_practical():
-    # disinclude the stride test because this favours impractically large data caches + block sizes
-    input_tests = [
-        "pointer_chase",
-        "strided_access",
-        "primes",
-        "random1",
-        "repmovs",
-        "test1",
-    ]
-
-    df = pd.read_csv(csv_path)
-
-    # L1 caches over 64KB very expensive IRL, so only search within this space
-    df = df[df["dcache_cap"] <= 64 * 1024]
-    df = df[df["icache_cap"] <= 64 * 1024]
-
-    # additionally restrict
-    df = df[df["icache_blsz"] <= 64]
-    df = df[df["dcache_blsz"] <= 64]
-    best = find_common_best_configs(df, input_tests)
-    best = best.sort_values(
-        ["icache_cap", "dcache_cap", "dcache_blsz", "policy"],
-        ascending=[True, True, False, False],
-    )
-
-    best.to_csv("bench/best_practical.csv", index=False)
-
-
 # Effect of Cache Size on Performance (LRU, 32B blocks)
 def analyze_cache_size_effect():
     print("\n\n\n============ analyze_cache_size_effect ============")
@@ -197,19 +138,17 @@ def analyze_cache_size_effect():
     icache_test = "inputs/custom/looped_random_1k.x"
 
     # tests with interesting results, all others are equal
-    dcache_tests = [
-        "inputs/custom/stream_reuse.x",
-        "inputs/custom/strided_access.x",
-        "inputs/custom/primes.x",
-        "inputs/custom/pointer_chase.x",
-    ]
+    # dcache_tests = [
+    #     "inputs/custom/stream_reuse.x",
+    #     "inputs/custom/strided_access.x",
+    #     "inputs/custom/primes.x",
+    #     "inputs/custom/pointer_chase.x",
+    # ]
+
+    dcache_tests = df["input"].unique()
 
     # Create figure with two subplots
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    fig.suptitle(
-        "Effect of Cache Size on Performance (LRU, 4-way I-Cache, 8-way D-Cache, 32B blocks)",
-        fontsize=14,
-    )
 
     # ===== Plot 1: Instruction Cache Size Effect =====
     test_data = df[(df["input"] == icache_test) & (df["dcache_cap"] == 64 * 1024)]
@@ -308,10 +247,10 @@ def analyze_block_size_effect():
 
     # Create figure
     fig, ax = plt.subplots(figsize=(10, 6))
-    fig.suptitle(
-        "Effect of Block Size on Performance (LRU, 2KB I-Cache 4-way, 64KB D-Cache 8-way)",
-        fontsize=14,
-    )
+    # fig.suptitle(
+    #     "Effect of Block Size on Performance (LRU, 2KB I-Cache 4-way, 64KB D-Cache 8-way)",
+    #     fontsize=14,
+    # )
 
     # Get all unique block sizes for consistent x-axis
     all_block_sizes = set()
@@ -404,8 +343,6 @@ def analyze_policy_effect():
 
 if __name__ == "__main__":
     # best_overall()
-    # best_strided()
-    # best_practical()
     # analyze_cache_size_effect()
     analyze_block_size_effect()
     # analyze_associativity_effect()
