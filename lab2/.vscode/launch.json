@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(lldb) Launch",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/sim",
+            "args": [
+                "./inputs/inst/addiu.x"
+            ],
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "lldb",
+            "preLaunchTask": "make sim",
+            "setupCommands": [
+                {
+                    "description": "Redirect stdin",
+                    "text": "process launch --stdin debug_commands.txt"
+                }
+            ]
+        }
+    ]
+}
