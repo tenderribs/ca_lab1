@@ -9,13 +9,15 @@
 #ifndef _PIPE_H_
 #define _PIPE_H_
 
+#include "cache.h"
 #include "shell.h"
 
-/* Pipeline ops (instances of this structure) are high-level representations of
- * the instructions that actually flow through the pipeline. This struct does
- * not correspond 1-to-1 with the control signals that would actually pass
- * through the pipeline. Rather, it carries the original instruction, operand
- * information and values as they are collected, and destination information. */
+/* Pipeline ops (instances of this structure) are high-level representations
+ * of the instructions that actually flow through the pipeline. This struct
+ * does not correspond 1-to-1 with the control signals that would actually
+ * pass through the pipeline. Rather, it carries the original instruction,
+ * operand information and values as they are collected, and destination
+ * information. */
 typedef struct Pipe_Op {
     /* PC of this instruction */
     uint32_t pc;
@@ -36,15 +38,16 @@ typedef struct Pipe_Op {
                                                 regs */
 
     /* memory access information */
-    int is_mem;       /* is this a load/store? */
+    int is_mem;        /* is this a load/store? */
     uint32_t mem_addr; /* address if applicable */
-    int mem_write; /* is this a write to memory? */
-    uint32_t mem_value; /* value loaded from memory or to be written to memory */
-
+    int mem_write;     /* is this a write to memory? */
+    uint32_t
+        mem_value; /* value loaded from memory or to be written to memory */
+    uint32_t mem_value_read; // temp variable for cache reads if stage stalls
     /* register destination information */
     int reg_dst; /* 0 -- 31 if this inst has a destination register, -1
                     otherwise */
-    uint32_t reg_dst_value; /* value to write into dest reg. */
+    uint32_t reg_dst_value;  /* value to write into dest reg. */
     int reg_dst_value_ready; /* destination value produced yet? */
 
     /* branch information */
@@ -81,15 +84,18 @@ typedef struct Pipe_State {
     /* information for PC update (branch recovery). Branches should use this
      * mechanism to redirect the fetch stage, and flush the ops that came after
      * the branch as necessary. */
-    int branch_recover; /* set to '1' to load a new PC */
+    int branch_recover;   /* set to '1' to load a new PC */
     uint32_t branch_dest; /* next fetch will be from this PC */
-    int branch_flush; /* how many stages to flush during recover? (1 = fetch, 2 = fetch/decode, ...) */
+    int branch_flush; /* how many stages to flush during recover? (1 = fetch, 2
+                         = fetch/decode, ...) */
 
     /* multiplier stall info */
     int multiplier_stall; /* number of remaining cycles until HI/LO are ready */
 
     /* place other information here as necessary */
-
+    Cache icache, dcache;
+    uint32_t fetch_stall; // num of cycles to stall because of fetch stage
+    uint32_t mem_stall;   // num of cycles to stall because of mem stage
 } Pipe_State;
 
 /* global variable -- pipeline state */
