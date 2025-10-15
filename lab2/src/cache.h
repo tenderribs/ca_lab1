@@ -12,6 +12,21 @@
 #define DCACHE_SIZE (64 * 1024)
 #define DCACHE_WAYS 8
 
+#define L2CACHE_SIZE (256 * 1024)
+#define L2CACHE_WAYS 16
+#define NUM_MSHR 16
+
+#define NUM_BANKS 8
+#define NUM_ROWS (64 * 1024)
+#define ROW_SIZE (8 * 1024)
+
+typedef enum {
+    CACHE_HIT = 0,       // Hit, no stall needed
+    CACHE_MISS_WAIT = 1, // Miss, request issued, waiting for fill
+    CACHE_NO_MSHR = 2    // Cannot probe L2 (no free MSHRs), should never occur
+                         // according to task desc
+} CacheAccessResult;
+
 typedef struct Block {
     uint32_t tag;
     uint8_t valid;    // valid bit (0 = invalid, 1 = valid)
@@ -34,6 +49,42 @@ typedef struct Cache {
     uint8_t block_bits;
 } Cache;
 
+// L2 miss status holding registers
+typedef struct MSHR {
+    uint32_t address;
+    uint8_t valid;             // 1 = entry in use, 0 = free
+    uint8_t done;              // 1 = memory fill ready, 0 = still waiting
+    uint32_t fill_ready_cycle; // cycle when fill will be ready
+    uint8_t is_icache;         // 1 if for icache, 0 if for dcache
+} MSHR;
+
+// DRAM bank state
+typedef struct Bank {
+    uint8_t busy;         // 1 if bank busy, 0 if free
+    uint32_t ready_cycle; // cycle when bank becomes ready
+    uint32_t open_row;    // currently open row (-1 if closed)
+    uint8_t has_open_row; // 1 if row buffer has valid row
+} Bank;
+
+// Memory request in queue
+typedef struct MemRequest {
+    uint32_t address;
+    uint32_t arrival_cycle; // cycle when request arrived
+    uint8_t from_mem_stage; // 1 if from MEM stage, 0 if from fetch
+    MSHR *mshr;             // pointer to associated MSHR
+    uint8_t valid;          // 1 if entry valid
+} MemRequest;
+
+// Memory controller state
+typedef struct MemController {
+    MemRequest *queue;            // request queue (dynamically allocated)
+    uint32_t queue_capacity;      // max queue size
+    uint32_t queue_size;          // current number of requests
+    uint32_t cmd_bus_free_cycle;  // cycle when cmd/addr bus becomes free
+    uint32_t data_bus_free_cycle; // cycle when data bus becomes free
+    Bank banks[NUM_BANKS];
+} MemController;
+
 /**
  * @param uint16_t capacity in bytes
  * @param uint8_t block_size in bytes
@@ -48,10 +99,49 @@ void free_cache(Cache *c);
 void update_lru(Cache *c, size_t set, size_t block);
 
 /**
- * @param uint32_t address 4 byte aligned adress to access
- * @return how many cycles of latency for stall in interval [0,
- * DRAM_ACCESS_CYCLES]
+ * L1 cache access (instruction or data).
  */
-uint32_t cache_access(Cache *c, uint32_t address);
+CacheAccessResult l1_cache_access(Cache *c, uint32_t address,
+                                  uint8_t is_icache);
 
+/**
+ * L2 cache probe (called immediately on L1 miss in same cycle).
+ */
+CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache,
+                                  MSHR **allocated_mshr);
+
+/**
+ * Check if a pending L1 cache miss has been filled.
+ * Call this each cycle when pipeline is stalled on a cache miss.
+ * Returns 1 if fill ready (should unstall next cycle), 0 otherwise.
+ */
+int check_l1_fill_ready(Cache *c, uint32_t address);
+
+/**
+ * Complete the L1 cache fill (insert block into cache).
+ * Call this when fill is ready and pipeline is still stalled on it.
+ */
+void complete_l1_fill(Cache *c, uint32_t address);
+
+/**
+ * Initialize memory controller
+ */
+void init_memory_controller(MemController *mc, uint32_t queue_capacity);
+
+/**
+ * Free memory controller resources
+ */
+void free_memory_controller(MemController *mc);
+
+/**
+ * Simulate one cycle of memory controller operation.
+ * This processes pending requests, issues DRAM commands, handles fills.
+ * Call this ONCE per cycle in the main simulator loop.
+ */
+void memory_controller_cycle(MemController *mc, uint32_t current_cycle);
+
+// Decl. of global instances
+extern Cache icache, dcache, l2cache;
+extern MSHR mshrs[NUM_MSHR];
+extern MemController mem_controller;
 #endif

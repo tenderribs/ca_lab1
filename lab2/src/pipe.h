@@ -93,9 +93,7 @@ typedef struct Pipe_State {
     int multiplier_stall; /* number of remaining cycles until HI/LO are ready */
 
     /* place other information here as necessary */
-    Cache icache, dcache;
-    uint32_t fetch_stall; // num of cycles to stall because of fetch stage
-    uint32_t mem_stall;   // num of cycles to stall because of mem stage
+
 } Pipe_State;
 
 /* global variable -- pipeline state */
