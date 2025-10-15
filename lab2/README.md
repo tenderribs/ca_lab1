@@ -1,0 +1,1 @@
+L1 caches have 32B block size. L1 D-Cache is 8-way 64KB, L1 I-Cache is 4-way 8KB
