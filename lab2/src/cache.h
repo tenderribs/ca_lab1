@@ -107,8 +107,7 @@ CacheAccessResult l1_cache_access(Cache *c, uint32_t address,
 /**
  * L2 cache probe (called immediately on L1 miss in same cycle).
  */
-CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache,
-                                  MSHR **allocated_mshr);
+CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache);
 
 /**
  * Check if a pending L1 cache miss has been filled.
@@ -123,20 +122,14 @@ int check_l1_fill_ready(Cache *c, uint32_t address);
  */
 void complete_l1_fill(Cache *c, uint32_t address);
 
-/**
- * Initialize memory controller
- */
 void init_memory_controller(MemController *mc, uint32_t queue_capacity);
 
-/**
- * Free memory controller resources
- */
 void free_memory_controller(MemController *mc);
 
 /**
  * Simulate one cycle of memory controller operation.
  * This processes pending requests, issues DRAM commands, handles fills.
- * Call this ONCE per cycle in the main simulator loop.
+ * Called ONCE per cycle in the main simulator loop.
  */
 void memory_controller_cycle(MemController *mc, uint32_t current_cycle);
 

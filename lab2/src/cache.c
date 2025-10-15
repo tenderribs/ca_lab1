@@ -135,10 +135,7 @@ CacheAccessResult l1_cache_access(Cache *c, uint32_t address,
     }
 
     // MISS -> probe L2 cache in same cycle
-    MSHR *mshr = NULL;
-    CacheAccessResult l2_result = l2_cache_access(address, is_icache, &mshr);
-
-    return l2_result;
+    return l2_cache_access(address, is_icache);
 }
 
 int check_l1_fill_ready(Cache *c, uint32_t address) {
@@ -184,16 +181,12 @@ void complete_l1_fill(Cache *c, uint32_t address) {
     // Free the MSHR (done by caller or memory controller)
 }
 
-CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache,
-                                  MSHR **allocated_mshr) {
+CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache) {
     // L2 cache can only be probed if there are free MSHRs
     MSHR *mshr = allocate_mshr(address, is_icache);
     if (mshr == NULL) {
-        *allocated_mshr = NULL;
         return CACHE_NO_MSHR;
     }
-
-    *allocated_mshr = mshr;
 
     // calculate the L2 set index and the tag
     uint32_t tag = (address >> (l2cache.block_bits + l2cache.set_bits));
@@ -221,7 +214,6 @@ CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache,
     // Add request to memory controller queue (will be done in
     // memory_controller_cycle) The memory controller will set mshr->done when
     // data is ready
-
     return CACHE_MISS_WAIT;
 }
 
@@ -247,6 +239,7 @@ static void insert_l2_block(uint32_t address) {
     // If all blocks valid, use LRU
     if (!found) {
         for (size_t b = 0; b < l2cache.num_ways; b++) {
+            // evict least recently used block
             if (l2cache.sets[set].blocks[b].recency == (l2cache.num_ways - 1)) {
                 victim = b;
                 break;
@@ -254,7 +247,7 @@ static void insert_l2_block(uint32_t address) {
         }
     }
 
-    // Insert at MRU position
+    // replace the victim
     l2cache.sets[set].blocks[victim].tag = tag;
     l2cache.sets[set].blocks[victim].valid = 1;
     l2cache.sets[set].blocks[victim].recency = 0;
@@ -492,10 +485,7 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
     for (size_t i = 0; i < NUM_MSHR; i++) {
         if (mshrs[i].valid && !mshrs[i].done &&
             mshrs[i].fill_ready_cycle == 0) {
-            // This is an L2 miss that hasn't been queued yet
-            // Check if it was allocated long enough ago (L2_TO_MEM_LATENCY
-            // cycles) For simplicity, we queue it immediately and track timing
-            // in the request
+            // Found unqueued L2 miss -> queue it
 
             // Find free queue slot
             int queued = 0;
@@ -505,21 +495,23 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
                     mc->queue[j].arrival_cycle =
                         current_cycle + L2_TO_MEM_LATENCY;
                     mc->queue[j].from_mem_stage =
-                        !mshrs[i].is_icache; // Approximation
+                        (mshrs[i].is_icache == 1) ? 0 : 1;
                     mc->queue[j].mshr = &mshrs[i];
                     mc->queue[j].valid = 1;
                     mc->queue_size++;
                     queued = 1;
 
-                    // Mark MSHR so we don't queue it again
-                    mshrs[i].fill_ready_cycle = 1; // Non-zero sentinel value
+                    // Mark MSHR with impossible value so we don't queue it
+                    // again
+                    mshrs[i].fill_ready_cycle = 1;
                     break;
                 }
             }
 
             if (!queued) {
                 // Queue full - should not happen with infinite queue
-                // But we handle it gracefully
+                printf("MEM QUEUE IS FULL! Shouldn't ever happen");
+                assert(0);
             }
         }
     }
@@ -540,9 +532,6 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
         if (mc->queue[i].valid && mc->queue[i].mshr->done) {
             // Fill is complete - insert into L2 cache
             insert_l2_block(mc->queue[i].address);
-
-            // Remove from queue (already done by issue_dram_request)
-            // Free MSHR is done by pipeline when it completes the L1 fill
         }
     }
 }
