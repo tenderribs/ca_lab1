@@ -8,6 +8,7 @@
 
 #include "pipe.h"
 #include "cache.h"
+#include "mem_controller.h"
 #include "mips.h"
 #include "shell.h"
 #include <assert.h>
@@ -35,7 +36,7 @@ Pipe_State pipe;
 
 /* global cache state */
 Cache dcache, icache, l2cache;
-MSHR mshrs[16];
+MSHR mshrs[NUM_MSHR];
 MemController mem_controller;
 
 // Track addresses for pending cache misses

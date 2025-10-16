@@ -15,6 +15,8 @@
 
 #define L2CACHE_SIZE (256 * 1024)
 #define L2CACHE_WAYS 16
+#define L2_HIT_LATENCY 15
+
 #define NUM_MSHR 16
 
 #define NUM_BANKS 8
@@ -104,8 +106,11 @@ int check_l1_fill_ready(Cache *c, uint32_t address);
  */
 void complete_l1_fill(Cache *c, uint32_t address);
 
-// Decl. of global instances
-extern Cache icache, dcache, l2cache;
+// Insert block into L2 cache when fill completes from memory
+void insert_l2_block(uint32_t address);
+
+// Decl. of global instances used by mem_controller.c and cache.c
+extern Cache l2cache;
 extern MSHR mshrs[NUM_MSHR];
 
 #endif
