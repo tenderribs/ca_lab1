@@ -1,8 +1,9 @@
-#include <stdint.h>
-#include <stdlib.h>
 
 #ifndef _CACHE_H_
 #define _CACHE_H_
+
+#include <stdint.h>
+#include <stdlib.h>
 
 #define BLOCK_SIZE 32
 
@@ -66,25 +67,6 @@ typedef struct Bank {
     uint8_t has_open_row; // 1 if row buffer has valid row
 } Bank;
 
-// Memory request in queue
-typedef struct MemRequest {
-    uint32_t address;
-    uint32_t arrival_cycle; // cycle when request arrived
-    uint8_t from_mem_stage; // 1 if from MEM stage, 0 if from fetch
-    MSHR *mshr;             // pointer to associated MSHR
-    uint8_t valid;          // 1 if entry valid
-} MemRequest;
-
-// Memory controller state
-typedef struct MemController {
-    MemRequest *queue;            // request queue (dynamically allocated)
-    uint32_t queue_capacity;      // max queue size
-    uint32_t queue_size;          // current number of requests
-    uint32_t cmd_bus_free_cycle;  // cycle when cmd/addr bus becomes free
-    uint32_t data_bus_free_cycle; // cycle when data bus becomes free
-    Bank banks[NUM_BANKS];
-} MemController;
-
 /**
  * @param uint16_t capacity in bytes
  * @param uint8_t block_size in bytes
@@ -122,19 +104,8 @@ int check_l1_fill_ready(Cache *c, uint32_t address);
  */
 void complete_l1_fill(Cache *c, uint32_t address);
 
-void init_memory_controller(MemController *mc, uint32_t queue_capacity);
-
-void free_memory_controller(MemController *mc);
-
-/**
- * Simulate one cycle of memory controller operation.
- * This processes pending requests, issues DRAM commands, handles fills.
- * Called ONCE per cycle in the main simulator loop.
- */
-void memory_controller_cycle(MemController *mc, uint32_t current_cycle);
-
 // Decl. of global instances
 extern Cache icache, dcache, l2cache;
 extern MSHR mshrs[NUM_MSHR];
-extern MemController mem_controller;
+
 #endif
