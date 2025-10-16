@@ -1,9 +1,8 @@
 #include "cache.h"
 #include "shell.h"
+#include "stdio.h"
 #include <assert.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 // DRAM timing constants (in cycles)
 #define DRAM_COMMAND_CYCLES 4
@@ -166,6 +165,7 @@ void complete_l1_fill(Cache *c, uint32_t address) {
     // 2. If all blocks valid, use LRU
     if (!found) {
         for (size_t b = 0; b < c->num_ways; b++) {
+            // find the least recently used block, set as victim
             if (c->sets[set].blocks[b].recency == (c->num_ways - 1)) {
                 victim = b;
                 break;
@@ -173,7 +173,7 @@ void complete_l1_fill(Cache *c, uint32_t address) {
         }
     }
 
-    // Insert the block
+    // Insert the block at victims place
     c->sets[set].blocks[victim].tag = tag;
     c->sets[set].blocks[victim].valid = 1;
     update_lru(c, set, victim);
@@ -305,6 +305,8 @@ static RowBufferStatus get_row_buffer_status(Bank *bank, uint32_t row) {
     if (!bank->has_open_row) {
         return ROW_BUFFER_MISS;
     }
+
+    // row buffer has open row
     if (bank->open_row == row) {
         return ROW_BUFFER_HIT;
     }
@@ -314,7 +316,7 @@ static RowBufferStatus get_row_buffer_status(Bank *bank, uint32_t row) {
 // Check if a request can be scheduled in the current cycle
 static int is_request_schedulable(MemController *mc, MemRequest *req,
                                   uint32_t current_cycle) {
-    if (!req->valid)
+    if (!req->valid) // sanity check
         return 0;
 
     uint32_t bank = get_bank_index(req->address);
@@ -323,7 +325,6 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
     RowBufferStatus rb_status = get_row_buffer_status(&mc->banks[bank], row);
 
     // Determine command sequence and timing
-    uint32_t num_commands = 0;
     uint32_t first_cmd_cycle = current_cycle;
     uint32_t last_cmd_cycle = 0;
     uint32_t bank_free_cycle = 0;
@@ -332,7 +333,6 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
     switch (rb_status) {
     case ROW_BUFFER_HIT:
         // Only READ/WRITE command needed
-        num_commands = 1;
         last_cmd_cycle = first_cmd_cycle + DRAM_COMMAND_CYCLES - 1;
         bank_free_cycle = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
         data_cycle_start = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
@@ -340,7 +340,6 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
 
     case ROW_BUFFER_MISS:
         // ACTIVATE, then READ/WRITE
-        num_commands = 2;
         last_cmd_cycle = first_cmd_cycle + 2 * DRAM_COMMAND_CYCLES - 1;
         bank_free_cycle = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
         data_cycle_start = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
@@ -348,7 +347,6 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
 
     case ROW_BUFFER_CONFLICT:
         // PRECHARGE, ACTIVATE, then READ/WRITE
-        num_commands = 3;
         last_cmd_cycle = first_cmd_cycle + 3 * DRAM_COMMAND_CYCLES - 1;
         bank_free_cycle = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
         data_cycle_start = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
@@ -385,6 +383,7 @@ static MemRequest *select_request_to_schedule(MemController *mc,
                                               uint32_t current_cycle) {
     MemRequest *best = NULL;
 
+    // check all the requests in the queue
     for (uint32_t i = 0; i < mc->queue_capacity; i++) {
         if (!mc->queue[i].valid)
             continue;
@@ -457,6 +456,7 @@ static void issue_dram_request(MemController *mc, MemRequest *req,
     mc->cmd_bus_free_cycle = current_cycle + cmd_cycles;
     bank->ready_cycle = mc->cmd_bus_free_cycle + DRAM_BANK_BUSY_CYCLES;
 
+    // calculate cycle when data transfer starts
     uint32_t data_start = bank->ready_cycle;
     mc->data_bus_free_cycle = data_start + DRAM_DATA_TRANSFER_CYCLES;
 
