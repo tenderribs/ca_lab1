@@ -3,8 +3,6 @@
 #include <assert.h>
 #include <stdlib.h>
 
-#define DRAM_ACCESS_CYCLES 50
-
 void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways,
                  uint8_t block_size) {
     c->block_size = block_size;
@@ -37,7 +35,7 @@ void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways,
 
             block->tag = 0;
             block->valid = 0;
-            block->recency = b;
+            block->recency = 0;
         }
     }
 }
@@ -68,29 +66,85 @@ void update_lru(Cache *c, size_t set, size_t block) {
     c->sets[set].blocks[block].recency = 0;
 }
 
-uint32_t cache_access(Cache *c, uint32_t address) {
+static MSHR *find_mshr_for_address(uint32_t address) {
+    // Align address to block boundary
+    uint32_t block_addr = address & ~(BLOCK_SIZE - 1);
+
+    for (size_t i = 0; i < NUM_MSHR; i++) {
+        if (mshrs[i].valid &&
+            (mshrs[i].address & ~(BLOCK_SIZE - 1)) == block_addr) {
+            return &mshrs[i];
+        }
+    }
+    return NULL;
+}
+
+static MSHR *allocate_mshr(uint32_t address, uint8_t is_icache) {
+    for (size_t i = 0; i < NUM_MSHR; i++) {
+        if (!mshrs[i].valid) {
+            mshrs[i].address = address & ~(BLOCK_SIZE - 1);
+            mshrs[i].valid = 1;
+            mshrs[i].done = 0;
+            mshrs[i].fill_ready_cycle = 0;
+            mshrs[i].is_icache = is_icache;
+            return &mshrs[i];
+        }
+    }
+    return NULL;
+}
+
+static void free_mshr(MSHR *mshr) {
+    mshr->valid = 0;
+    mshr->done = 0;
+    mshr->fill_ready_cycle = 0;
+}
+
+CacheAccessResult l1_cache_access(Cache *c, uint32_t address,
+                                  uint8_t is_icache) {
     assert((address % 4 == 0) && "Address should be multiple of 4 bytes");
 
-    // calculate the set index and the tag
+    // calculate the L1 set index and the tag
     uint32_t tag = (address >> (c->block_bits + c->set_bits));
     uint32_t set = ((address >> c->block_bits) & ((1 << c->set_bits) - 1));
 
-    // check set for any hits in set
+    // check L1 set for any hits in set
     for (size_t b = 0; b < c->num_ways; b++) {
         if (c->sets[set].blocks[b].tag == tag && c->sets[set].blocks[b].valid) {
             // HIT since tag matches and block is valid
             // -> update LRU positions of set's blocks
             update_lru(c, set, b);
-            return 0;
+            return CACHE_HIT;
         }
     }
 
-    // miss, so need to update a block somewhere in the set
+    // MISS -> check if request already pending
+    MSHR *existing_mshr = find_mshr_for_address(address);
+    if (existing_mshr) {
+        // Already have a pending request for this block
+        return CACHE_MISS_WAIT;
+    }
 
+    // MISS -> probe L2 cache in same cycle
+    return l2_cache_access(address, is_icache);
+}
+
+int check_l1_fill_ready(Cache *c, uint32_t address) {
+    MSHR *mshr = find_mshr_for_address(address);
+    if (mshr && mshr->done) {
+        return 1;
+    }
+    return 0;
+}
+
+void complete_l1_fill(Cache *c, uint32_t address) {
+    uint32_t tag = (address >> (c->block_bits + c->set_bits));
+    uint32_t set = ((address >> c->block_bits) & ((1 << c->set_bits) - 1));
+
+    // Find victim block using LRU
     size_t victim = 0;
-    size_t found = 0;
+    int found = 0;
 
-    // 1. look for invalid blocks we can just fill up for first time, exit early
+    // 1. Look for invalid blocks first
     for (size_t b = 0; b < c->num_ways; b++) {
         if (!c->sets[set].blocks[b].valid) {
             victim = b;
@@ -99,11 +153,10 @@ uint32_t cache_access(Cache *c, uint32_t address) {
         }
     }
 
-    // 2. blocks all valid, so replace a block
-
+    // 2. If all blocks valid, use LRU
     if (!found) {
-        // LRU chooses the least recently used block
         for (size_t b = 0; b < c->num_ways; b++) {
+            // find the least recently used block, set as victim
             if (c->sets[set].blocks[b].recency == (c->num_ways - 1)) {
                 victim = b;
                 break;
@@ -111,11 +164,88 @@ uint32_t cache_access(Cache *c, uint32_t address) {
         }
     }
 
-    // replace victim block
+    // Insert the block at victims place
     c->sets[set].blocks[victim].tag = tag;
     c->sets[set].blocks[victim].valid = 1;
-
     update_lru(c, set, victim);
 
-    return DRAM_ACCESS_CYCLES;
+    // Free the MSHR (done by caller or memory controller)
+}
+
+CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache) {
+    // L2 cache can only be probed if there are free MSHRs
+    MSHR *mshr = allocate_mshr(address, is_icache);
+    if (mshr == NULL) {
+        return CACHE_NO_MSHR;
+    }
+
+    // calculate the L2 set index and the tag
+    uint32_t tag = (address >> (l2cache.block_bits + l2cache.set_bits));
+    uint32_t set =
+        ((address >> l2cache.block_bits) & ((1 << l2cache.set_bits) - 1));
+
+    // check L2 set for any hits in set
+    for (size_t b = 0; b < l2cache.num_ways; b++) {
+        if (l2cache.sets[set].blocks[b].tag == tag &&
+            l2cache.sets[set].blocks[b].valid) {
+            // L2 HIT - will send fill notification after 15 cycles
+            update_lru(&l2cache, set, b);
+
+            // Mark when fill will be ready (current cycle is in shell.c
+            // stat_cycles)
+            extern uint32_t stat_cycles;
+            mshr->fill_ready_cycle = stat_cycles + L2_HIT_LATENCY;
+
+            return CACHE_MISS_WAIT; // Not truly a miss, but L1 still waits for
+                                    // fill
+        }
+    }
+
+    // L2 MISS - need to go to memory
+    // Add request to memory controller queue (will be done in
+    // memory_controller_cycle) The memory controller will set mshr->done when
+    // data is ready
+    return CACHE_MISS_WAIT;
+}
+
+void insert_l2_block(uint32_t address) {
+    uint32_t tag = (address >> (l2cache.block_bits + l2cache.set_bits));
+    uint32_t set =
+        ((address >> l2cache.block_bits) & ((1 << l2cache.set_bits) - 1));
+
+    // Find victim using LRU
+    size_t victim = 0;
+    int found = 0;
+
+    // Look for invalid blocks first
+    for (size_t b = 0; b < l2cache.num_ways; b++) {
+        if (!l2cache.sets[set].blocks[b].valid) {
+            victim = b;
+            found = 1;
+            break;
+        }
+    }
+
+    // If all blocks valid, use LRU
+    if (!found) {
+        for (size_t b = 0; b < l2cache.num_ways; b++) {
+            // evict least recently used block
+            if (l2cache.sets[set].blocks[b].recency == (l2cache.num_ways - 1)) {
+                victim = b;
+                break;
+            }
+        }
+    }
+
+    // replace the victim
+    l2cache.sets[set].blocks[victim].tag = tag;
+    l2cache.sets[set].blocks[victim].valid = 1;
+    l2cache.sets[set].blocks[victim].recency = 0;
+
+    // Increment recency of all other valid blocks
+    for (size_t b = 0; b < l2cache.num_ways; b++) {
+        if (b != victim && l2cache.sets[set].blocks[b].valid) {
+            l2cache.sets[set].blocks[b].recency++;
+        }
+    }
 }

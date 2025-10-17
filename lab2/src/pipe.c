@@ -8,6 +8,7 @@
 
 #include "pipe.h"
 #include "cache.h"
+#include "mem_controller.h"
 #include "mips.h"
 #include "shell.h"
 #include <assert.h>
@@ -33,13 +34,29 @@ void print_op(Pipe_Op *op) {
 /* global pipeline state */
 Pipe_State pipe;
 
+/* global cache state */
+Cache dcache, icache, l2cache;
+MSHR mshrs[NUM_MSHR];
+MemController mem_controller;
+
+// Track addresses for pending cache misses
+uint32_t l1_fetch_miss_addr = 0;
+uint8_t l1_fetch_waiting = 0;
+
+uint32_t l1_mem_miss_addr = 0;
+uint8_t l1_mem_waiting = 0;
+
 void pipe_init() {
     memset(&pipe, 0, sizeof(Pipe_State));
     pipe.PC = 0x00400000;
 
     // Initialize the caches
-    alloc_cache(&pipe.icache, ICACHE_SIZE, ICACHE_WAYS, BLOCK_SIZE);
-    alloc_cache(&pipe.dcache, DCACHE_SIZE, DCACHE_WAYS, BLOCK_SIZE);
+    alloc_cache(&icache, ICACHE_SIZE, ICACHE_WAYS, BLOCK_SIZE);
+    alloc_cache(&dcache, DCACHE_SIZE, DCACHE_WAYS, BLOCK_SIZE);
+    alloc_cache(&l2cache, L2CACHE_SIZE, L2CACHE_WAYS, BLOCK_SIZE);
+
+    // Initialize memory controller with large queue (effectively infinite)
+    init_memory_controller(&mem_controller, 256);
 }
 
 void pipe_cycle() {
@@ -56,6 +73,9 @@ void pipe_cycle() {
     printf("\n");
 #endif
 
+    // Simulate memory controller (processes DRAM, L2 fills, etc.)
+    memory_controller_cycle(&mem_controller, stat_cycles);
+
     pipe_stage_wb();
     pipe_stage_mem();
     pipe_stage_execute();
@@ -64,8 +84,10 @@ void pipe_cycle() {
 
     // if final cycle, free cache memory
     if (RUN_BIT == 0) {
-        free_cache(&pipe.icache);
-        free_cache(&pipe.dcache);
+        free_cache(&icache);
+        free_cache(&dcache);
+        free_cache(&l2cache);
+        free_memory_controller(&mem_controller);
     }
 
     /* handle branch recoveries */
@@ -146,8 +168,8 @@ void pipe_stage_wb() {
             pipe.PC = op->pc; /* fetch will do pc += 4, then we stop with
                                  correct PC */
 
-            // fetch stage won't run if memory is stalled
-            if (pipe.fetch_stall) {
+            // fetch stage won't run if waiting on cache miss
+            if (l1_fetch_waiting) {
                 pipe.PC += 4;
             }
             RUN_BIT = 0;
@@ -165,8 +187,31 @@ void pipe_stage_mem() {
     if (!pipe.mem_op)
         return;
 
-    if (pipe.mem_stall > 0) {
-        pipe.mem_stall--;
+    /* if waiting for a cache fill, check if ready */
+    if (l1_mem_waiting) {
+        if (check_l1_fill_ready(&dcache, l1_mem_miss_addr)) {
+            // Fill is ready - complete it and unstall next cycle
+            complete_l1_fill(&dcache, l1_mem_miss_addr);
+
+            // Free the MSHR
+            MSHR *mshr = NULL;
+            for (size_t i = 0; i < NUM_MSHR; i++) {
+                uint32_t block_addr = l1_mem_miss_addr & ~(BLOCK_SIZE - 1);
+                if (mshrs[i].valid &&
+                    (mshrs[i].address & ~(BLOCK_SIZE - 1)) == block_addr) {
+                    mshr = &mshrs[i];
+                    break;
+                }
+            }
+            if (mshr) {
+                mshr->valid = 0;
+                mshr->done = 0;
+            }
+
+            l1_mem_waiting = 0;
+            l1_mem_miss_addr = 0;
+            // Will process the instruction next cycle
+        }
         return;
     }
 
@@ -175,13 +220,22 @@ void pipe_stage_mem() {
 
     uint32_t val = 0;
     if (op->is_mem) {
-        uint32_t stall_cycles = cache_access(&pipe.dcache, op->mem_addr & ~3);
+        CacheAccessResult result =
+            l1_cache_access(&dcache, op->mem_addr & ~3, 0);
 
-        if (stall_cycles > 0) { // trigger stall on cache miss
-            pipe.mem_stall = stall_cycles - 1;
+        if (result == CACHE_NO_MSHR) {
+            // No free MSHRs - stall and retry
             return;
         }
 
+        if (result == CACHE_MISS_WAIT) {
+            // Miss - start waiting for fill
+            l1_mem_waiting = 1;
+            l1_mem_miss_addr = op->mem_addr & ~3;
+            return;
+        }
+
+        // Hit - proceed normally
         val = mem_read_32(op->mem_addr & ~3);
     }
 
@@ -719,21 +773,50 @@ void pipe_stage_fetch() {
     if (pipe.decode_op != NULL)
         return;
 
-    // wait for memory to respond
-    if (pipe.fetch_stall) {
-        pipe.fetch_stall--;
+    /* if waiting for a cache fill, check if ready */
+    if (l1_fetch_waiting) {
+        if (check_l1_fill_ready(&icache, l1_fetch_miss_addr)) {
+            // Fill is ready - complete it and unstall next cycle
+            complete_l1_fill(&icache, l1_fetch_miss_addr);
+
+            // Free the MSHR
+            MSHR *mshr = NULL;
+            for (size_t i = 0; i < NUM_MSHR; i++) {
+                uint32_t block_addr = l1_fetch_miss_addr & ~(BLOCK_SIZE - 1);
+                if (mshrs[i].valid &&
+                    (mshrs[i].address & ~(BLOCK_SIZE - 1)) == block_addr) {
+                    mshr = &mshrs[i];
+                    break;
+                }
+            }
+            if (mshr) {
+                mshr->valid = 0;
+                mshr->done = 0;
+            }
+
+            l1_fetch_waiting = 0;
+            l1_fetch_miss_addr = 0;
+            // Will fetch the instruction next cycle
+        }
         return;
     }
 
-    // check cache if the address is ready
-    uint32_t stall_n_cycles = cache_access(&pipe.icache, pipe.PC);
+    // Check I-cache
+    CacheAccessResult result = l1_cache_access(&icache, pipe.PC, 1);
 
-    if (stall_n_cycles > 0) {
-        // -1 because this cycle counts too for mem latency
-        pipe.fetch_stall = stall_n_cycles - 1;
+    if (result == CACHE_NO_MSHR) {
+        // No free MSHRs - stall and retry
         return;
     }
 
+    if (result == CACHE_MISS_WAIT) {
+        // Miss - start waiting for fill
+        l1_fetch_waiting = 1;
+        l1_fetch_miss_addr = pipe.PC;
+        return;
+    }
+
+    // Hit - fetch instruction
     /* Allocate an op and send it down the pipeline. */
     Pipe_Op *op = malloc(sizeof(Pipe_Op));
     memset(op, 0, sizeof(Pipe_Op));
