@@ -182,6 +182,23 @@ void pipe_stage_wb() {
     stat_inst_retire++;
 }
 
+static void free_mshr(uint32_t address) {
+    // Free the MSHR
+    MSHR *mshr = NULL;
+    for (size_t i = 0; i < NUM_MSHR; i++) {
+        uint32_t block_addr = address & ~(BLOCK_SIZE - 1);
+        if (mshrs[i].valid &&
+            (mshrs[i].address & ~(BLOCK_SIZE - 1)) == block_addr) {
+            mshr = &mshrs[i];
+            break;
+        }
+    }
+    if (mshr) {
+        mshr->valid = 0;
+        mshr->done = 0;
+    }
+}
+
 void pipe_stage_mem() {
     /* if there is no instruction in this pipeline stage, we are done */
     if (!pipe.mem_op)
@@ -193,20 +210,7 @@ void pipe_stage_mem() {
             // Fill is ready - complete it and unstall next cycle
             complete_l1_fill(&dcache, l1_mem_miss_addr);
 
-            // Free the MSHR
-            MSHR *mshr = NULL;
-            for (size_t i = 0; i < NUM_MSHR; i++) {
-                uint32_t block_addr = l1_mem_miss_addr & ~(BLOCK_SIZE - 1);
-                if (mshrs[i].valid &&
-                    (mshrs[i].address & ~(BLOCK_SIZE - 1)) == block_addr) {
-                    mshr = &mshrs[i];
-                    break;
-                }
-            }
-            if (mshr) {
-                mshr->valid = 0;
-                mshr->done = 0;
-            }
+            free_mshr(l1_mem_miss_addr);
 
             l1_mem_waiting = 0;
             l1_mem_miss_addr = 0;
@@ -224,6 +228,7 @@ void pipe_stage_mem() {
             l1_cache_access(&dcache, op->mem_addr & ~3, 0);
 
         if (result == CACHE_NO_MSHR) {
+            assert(0); // sanity check
             // No free MSHRs - stall and retry
             return;
         }
@@ -779,20 +784,7 @@ void pipe_stage_fetch() {
             // Fill is ready - complete it and unstall next cycle
             complete_l1_fill(&icache, l1_fetch_miss_addr);
 
-            // Free the MSHR
-            MSHR *mshr = NULL;
-            for (size_t i = 0; i < NUM_MSHR; i++) {
-                uint32_t block_addr = l1_fetch_miss_addr & ~(BLOCK_SIZE - 1);
-                if (mshrs[i].valid &&
-                    (mshrs[i].address & ~(BLOCK_SIZE - 1)) == block_addr) {
-                    mshr = &mshrs[i];
-                    break;
-                }
-            }
-            if (mshr) {
-                mshr->valid = 0;
-                mshr->done = 0;
-            }
+            free_mshr(l1_fetch_miss_addr);
 
             l1_fetch_waiting = 0;
             l1_fetch_miss_addr = 0;
@@ -805,6 +797,7 @@ void pipe_stage_fetch() {
     CacheAccessResult result = l1_cache_access(&icache, pipe.PC, 1);
 
     if (result == CACHE_NO_MSHR) {
+        assert(0); // sanity check
         // No free MSHRs - stall and retry
         return;
     }
