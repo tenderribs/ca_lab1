@@ -42,9 +42,11 @@ MemController mem_controller;
 // Track addresses for pending cache misses
 uint32_t l1_fetch_miss_addr = 0;
 uint8_t l1_fetch_waiting = 0;
+uint8_t l1_fetch_cancelled = 0; // 1 if fetch miss was cancelled by branch
 
 uint32_t l1_mem_miss_addr = 0;
 uint8_t l1_mem_waiting = 0;
+uint8_t l1_mem_cancelled = 0; // 1 if mem miss was cancelled by branch
 
 void pipe_init() {
     memset(&pipe, 0, sizeof(Pipe_State));
@@ -115,12 +117,26 @@ void pipe_cycle() {
             if (pipe.mem_op)
                 free(pipe.mem_op);
             pipe.mem_op = NULL;
+
+            // If MEM stage is flushed and was waiting on a cache miss, cancel
+            // it
+            if (l1_mem_waiting) {
+                l1_mem_cancelled = 1;
+                l1_mem_waiting = 0; // Unstall immediately
+            }
         }
 
         if (pipe.branch_flush >= 5) {
             if (pipe.wb_op)
                 free(pipe.wb_op);
             pipe.wb_op = NULL;
+        }
+
+        // If fetch was waiting on a cache miss, cancel it
+        // (fetch is always flushed on any branch recovery)
+        if (l1_fetch_waiting) {
+            l1_fetch_cancelled = 1;
+            l1_fetch_waiting = 0; // Unstall immediately
         }
 
         pipe.branch_recover = 0;
@@ -217,6 +233,18 @@ void pipe_stage_mem() {
             // Will process the instruction next cycle
         }
         return;
+    }
+
+    /* if there was a cancelled miss, check if fill is ready to free MSHR */
+    if (l1_mem_cancelled) {
+        if (check_l1_fill_ready(&dcache, l1_mem_miss_addr)) {
+            // Fill is ready but was cancelled - just free MSHR, don't insert
+            // into L1
+            free_mshr(l1_mem_miss_addr);
+            l1_mem_cancelled = 0;
+            l1_mem_miss_addr = 0;
+        }
+        // Don't return - allow stage to process (if there's a new instruction)
     }
 
     /* grab the op out of our input slot */
@@ -791,6 +819,19 @@ void pipe_stage_fetch() {
             // Will fetch the instruction next cycle
         }
         return;
+    }
+
+    /* if there was a cancelled miss, check if fill is ready to free MSHR */
+    if (l1_fetch_cancelled) {
+        if (check_l1_fill_ready(&icache, l1_fetch_miss_addr)) {
+            // Fill is ready but was cancelled - just free MSHR, don't insert
+            // into L1
+            free_mshr(l1_fetch_miss_addr);
+            l1_fetch_cancelled = 0;
+            l1_fetch_miss_addr = 0;
+        }
+        // Don't return - allow stage to fetch (new PC was set by branch
+        // recovery)
     }
 
     // Check I-cache

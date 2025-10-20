@@ -93,12 +93,6 @@ static MSHR *allocate_mshr(uint32_t address, uint8_t is_icache) {
     return NULL;
 }
 
-static void free_mshr(MSHR *mshr) {
-    mshr->valid = 0;
-    mshr->done = 0;
-    mshr->fill_ready_cycle = 0;
-}
-
 CacheAccessResult l1_cache_access(Cache *c, uint32_t address,
                                   uint8_t is_icache) {
     assert((address % 4 == 0) && "Address should be multiple of 4 bytes");
