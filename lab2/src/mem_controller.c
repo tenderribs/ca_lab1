@@ -59,12 +59,15 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
     uint8_t num_commands = 0;
     switch (rb_status) {
     case ROW_BUFFER_HIT:
+        // READ/WRITE
         num_commands = 1;
         break;
     case ROW_BUFFER_MISS:
+        // ACTIVATE + READ/WRITE
         num_commands = 2;
         break;
     case ROW_BUFFER_CONFLICT:
+        // PRECHARGE + ACTIVATE + READ/WRITE
         num_commands = 3;
         break;
     }
@@ -74,9 +77,10 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
     uint32_t access_start = curr_cycle; // ~ 0
 
     // ======================
-    // 1. is CMD bus available?
+    // 1. is CMD bus available for our commands?
 
     for (uint8_t our_cmd_nr = 0; our_cmd_nr < num_commands; our_cmd_nr++) {
+        // calculate start and end cycle for all the cmds we execute
         uint32_t our_cmd_start = access_start + our_cmd_nr * BANK_BUSY_CYCLES; // ~ 0, 100, 200
         uint32_t our_cmd_end = our_cmd_start + CMD_CYCLES - 1;                  // ~ 3, 103, 203
 
@@ -95,7 +99,6 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
                 uint32_t sched_cmd_end = sched_cmd_start + CMD_CYCLES - 1;
 
                 // reject if our access overlaps with an already scheduled command
-                // overlap if our_start <= sched_end && our_end >= sched_start
                 if (!(our_cmd_end < sched_cmd_start || our_cmd_start > sched_cmd_end))
                     return 0;
             }
@@ -130,14 +133,13 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
     // ======================
     // 3. is the bank free?
 
-    // ensure no overlap between bank busy start and end
-    
-    uint32_t sched_busy_start = mc->banks[bank].busy_start;
-    uint32_t sched_busy_end = sched_busy_start + mc->banks[bank].num_commands * BANK_BUSY_CYCLES - 1;
+    // ensure no overlap between bank scheduled start and end
+    uint32_t sched_start = mc->banks[bank].busy_start;
+    uint32_t sched_end = sched_start + mc->banks[bank].num_commands * BANK_BUSY_CYCLES - 1;
 
     uint32_t access_end = access_start + num_commands * BANK_BUSY_CYCLES - 1;
-    // overlap if access_start <= sched_busy_end && access_end >= sched_busy_start
-    if (mc->banks[bank].num_commands != 0 && (access_start <= sched_busy_end && access_end >= sched_busy_start))
+    // overlap if access_start <= sched_end && access_end >= sched_start
+    if (mc->banks[bank].num_commands != 0 && (access_start <= sched_end && access_end >= sched_start))
         return 0;
 
     return 1;
