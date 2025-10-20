@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 // DRAM timing constants (in cycles)
-#define DRAM_COMMAND_CYCLES 4
-#define DRAM_BANK_BUSY_CYCLES 100
-#define DRAM_DATA_TRANSFER_CYCLES 50
+#define CMD_CYCLES 4
+#define BANK_BUSY_CYCLES 100
+#define DATA_TF_CYCLES 50
 
 #define L2_TO_MEM_LATENCY 5
 #define MEM_TO_L2_LATENCY 5
@@ -17,6 +17,15 @@ typedef enum {
     ROW_BUFFER_MISS,
     ROW_BUFFER_CONFLICT
 } RowBufferStatus;
+
+// DRAM bank state
+typedef struct Bank {
+    uint32_t busy_start; // cycle when bank started the request
+    uint8_t num_commands; // 1, 2, or 3, number of commands per req
+    uint32_t open_row;    // currently open row (-1 if closed)
+    uint8_t has_open_row; // 1 if row buffer has valid row
+} Bank;
+
 
 // Memory request in queue
 typedef struct MemRequest {

@@ -61,13 +61,6 @@ typedef struct MSHR {
     uint8_t is_icache;         // 1 if for icache, 0 if for dcache
 } MSHR;
 
-// DRAM bank state
-typedef struct Bank {
-    uint8_t busy;         // 1 if bank busy, 0 if free
-    uint32_t ready_cycle; // cycle when bank becomes ready
-    uint32_t open_row;    // currently open row (-1 if closed)
-    uint8_t has_open_row; // 1 if row buffer has valid row
-} Bank;
 
 /**
  * @param uint16_t capacity in bytes

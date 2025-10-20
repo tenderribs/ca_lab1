@@ -12,8 +12,6 @@ void init_memory_controller(MemController *mc, uint32_t queue_capacity) {
 
     // Initialize all banks
     for (int i = 0; i < NUM_BANKS; i++) {
-        mc->banks[i].busy = 0;
-        mc->banks[i].ready_cycle = 0;
         mc->banks[i].has_open_row = 0;
         mc->banks[i].open_row = 0;
     }
@@ -48,7 +46,7 @@ static RowBufferStatus get_row_buffer_status(Bank *bank, uint32_t row) {
 
 // Check if a request can be scheduled in the current cycle
 static int is_request_schedulable(MemController *mc, MemRequest *req,
-                                  uint32_t current_cycle) {
+                                  uint32_t curr_cycle) {
     if (!req->valid) // sanity check
         return 0;
 
@@ -57,56 +55,73 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
 
     RowBufferStatus rb_status = get_row_buffer_status(&mc->banks[bank], row);
 
-    // Determine command sequence and timing
-    uint32_t first_cmd_cycle = current_cycle;
-    uint32_t last_cmd_cycle = 0;
-    uint32_t bank_free_cycle = 0;
-    uint32_t data_cycle_start = 0;
-
+    // Determine timing sequence
+    uint8_t num_commands = 0;
     switch (rb_status) {
     case ROW_BUFFER_HIT:
-        // Only READ/WRITE command needed
-        last_cmd_cycle = first_cmd_cycle + DRAM_COMMAND_CYCLES - 1;
-        bank_free_cycle = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
-        data_cycle_start = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
+        num_commands = 1;
         break;
-
     case ROW_BUFFER_MISS:
-        // ACTIVATE, then READ/WRITE
-        last_cmd_cycle = first_cmd_cycle + 2 * DRAM_COMMAND_CYCLES - 1;
-        bank_free_cycle = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
-        data_cycle_start = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
+        num_commands = 2;
         break;
-
     case ROW_BUFFER_CONFLICT:
-        // PRECHARGE, ACTIVATE, then READ/WRITE
-        last_cmd_cycle = first_cmd_cycle + 3 * DRAM_COMMAND_CYCLES - 1;
-        bank_free_cycle = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
-        data_cycle_start = last_cmd_cycle + 1 + DRAM_BANK_BUSY_CYCLES;
+        num_commands = 3;
         break;
     }
+    assert(num_commands && num_commands <= 3);
 
-    uint32_t data_cycle_end = data_cycle_start + DRAM_DATA_TRANSFER_CYCLES - 1;
+    // CMD 
+    uint32_t access_start = curr_cycle; // ~ 0
 
-    // Check all conditions for schedulability
-    // 1. Command/address bus must be free for all command cycles
-    for (uint32_t c = first_cmd_cycle; c <= last_cmd_cycle; c++) {
-        if (c < mc->cmd_bus_free_cycle) {
-            return 0;
+    // ======================
+    // 1. is CMD bus available?
+
+    for (uint8_t our_cmd_nr = 0; our_cmd_nr < num_commands; our_cmd_nr++) {
+        uint32_t our_cmd_start = access_start + our_cmd_nr * BANK_BUSY_CYCLES; // ~ 0, 100, 200
+        uint32_t our_cmd_end = our_cmd_start + CMD_CYCLES - 1; // ~ 3, 103, 203
+
+        // check if any other bank is scheduled to use the COMMAND bus
+        for (size_t b = 0; b < NUM_BANKS; b++) { 
+            if (b == bank) continue;
+
+            // have to check each bank's scheduled commands' start and end
+            for (uint8_t sched_cmd = 0; sched_cmd < mc->banks[b].num_commands; sched_cmd++) {
+                uint32_t sched_cmd_start = mc->banks[b].busy_start + sched_cmd * BANK_BUSY_CYCLES;
+                uint32_t sched_cmd_end = sched_cmd_start + CMD_CYCLES - 1;
+
+                // reject if our access overlaps with an already scheduled command
+                if ((our_cmd_start <= sched_cmd_end) || (our_cmd_end >= sched_cmd_start)) return 0;
+            }
         }
     }
 
-    // 2. Data bus must be free for all data transfer cycles
-    for (uint32_t c = data_cycle_start; c <= data_cycle_end; c++) {
-        if (c < mc->data_bus_free_cycle) {
-            return 0;
-        }
+    // ======================
+    // 2. is data bus free?
+
+    // Data transfer 100 - 149
+    uint32_t data_tf_start = access_start + num_commands * BANK_BUSY_CYCLES; // ~ 100, 200, 300
+    uint32_t data_tf_end = data_tf_start + DATA_TF_CYCLES - 1; // ~ 149, 249, 349
+
+
+    // check if any other bank is scheduled to use the DATA bus
+    for (size_t b = 0; b < NUM_BANKS; b++) {
+        if (b == bank) continue;
+
+        // shared data bus will be used when banks are done processing commands:
+        uint32_t sched_tf_start = mc->banks[b].busy_start + mc->banks[b].num_commands * BANK_BUSY_CYCLES;
+        uint32_t sched_tf_end = sched_tf_start + DATA_TF_CYCLES - 1;
+
+        // reject if the scheduled transfers would overlap with ours
+        if ((data_tf_end >= sched_tf_start ) || (data_tf_start <= sched_tf_end)) return 0;
     }
 
-    // 3. Bank must be free
-    if (current_cycle < mc->banks[bank].ready_cycle) {
-        return 0;
-    }
+    // ======================
+    // 3. is the bank free?
+
+    // ensure no overlap between bank busy start and end
+    uint32_t busy_start = mc->banks[bank].busy_start;
+    uint32_t busy_end = busy_start + mc->banks[bank].num_commands * BANK_BUSY_CYCLES - 1;
+    if (access_start >= mc->banks[bank].busy_start) return 0;
 
     return 1;
 }
@@ -163,40 +178,34 @@ static void issue_dram_request(MemController *mc, MemRequest *req,
                                uint32_t current_cycle) {
     uint32_t bank_idx = get_bank_index(req->address);
     uint32_t row = get_row_index(req->address);
-    Bank *bank = &mc->banks[bank_idx];
+    Bank* bank = &mc->banks[bank_idx];
 
     RowBufferStatus rb_status = get_row_buffer_status(bank, row);
 
-    uint32_t cmd_cycles = 0;
 
     switch (rb_status) {
     case ROW_BUFFER_HIT:
-        cmd_cycles = DRAM_COMMAND_CYCLES;
+        bank->num_commands = 1;
         break;
     case ROW_BUFFER_MISS:
-        cmd_cycles = 2 * DRAM_COMMAND_CYCLES;
-        bank->has_open_row = 1;
-        bank->open_row = row;
+        bank->num_commands = 2;
         break;
     case ROW_BUFFER_CONFLICT:
-        cmd_cycles = 3 * DRAM_COMMAND_CYCLES;
-        bank->has_open_row = 1;
-        bank->open_row = row;
+        bank->num_commands = 3;
         break;
     }
 
-    // Update bus and bank states
-    mc->cmd_bus_free_cycle = current_cycle + cmd_cycles;
-    bank->ready_cycle = mc->cmd_bus_free_cycle + DRAM_BANK_BUSY_CYCLES;
+    assert(bank->num_commands >= 1 && bank->num_commands <= 3);
 
-    // calculate cycle when data transfer starts
-    uint32_t data_start = bank->ready_cycle;
-    mc->data_bus_free_cycle = data_start + DRAM_DATA_TRANSFER_CYCLES;
+    // Update bus and bank states
+    bank->busy_start = current_cycle;
+    bank->has_open_row = 1;
+    bank->open_row = row;
 
     // Calculate when fill will be complete
     // Data arrives at L2 after data transfer + latency back to L2
     uint32_t fill_complete_cycle =
-        data_start + DRAM_DATA_TRANSFER_CYCLES + MEM_TO_L2_LATENCY;
+        current_cycle + bank->num_commands * BANK_BUSY_CYCLES + DATA_TF_CYCLES + MEM_TO_L2_LATENCY;
 
     // Update MSHR
     req->mshr->fill_ready_cycle = fill_complete_cycle;
