@@ -78,11 +78,16 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
 
     for (uint8_t our_cmd_nr = 0; our_cmd_nr < num_commands; our_cmd_nr++) {
         uint32_t our_cmd_start = access_start + our_cmd_nr * BANK_BUSY_CYCLES; // ~ 0, 100, 200
-        uint32_t our_cmd_end = our_cmd_start + CMD_CYCLES - 1; // ~ 3, 103, 203
+        uint32_t our_cmd_end = our_cmd_start + CMD_CYCLES - 1;                  // ~ 3, 103, 203
 
         // check if any other bank is scheduled to use the COMMAND bus
-        for (size_t b = 0; b < NUM_BANKS; b++) { 
-            if (b == bank) continue;
+        for (size_t b = 0; b < NUM_BANKS; b++) {
+            if (b == bank)
+                continue;
+
+            // if the other bank has no scheduled commands, skip it
+            if (mc->banks[b].num_commands == 0)
+                continue;
 
             // have to check each bank's scheduled commands' start and end
             for (uint8_t sched_cmd = 0; sched_cmd < mc->banks[b].num_commands; sched_cmd++) {
@@ -90,7 +95,9 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
                 uint32_t sched_cmd_end = sched_cmd_start + CMD_CYCLES - 1;
 
                 // reject if our access overlaps with an already scheduled command
-                if ((our_cmd_start <= sched_cmd_end) || (our_cmd_end >= sched_cmd_start)) return 0;
+                // overlap if our_start <= sched_end && our_end >= sched_start
+                if (!(our_cmd_end < sched_cmd_start || our_cmd_start > sched_cmd_end))
+                    return 0;
             }
         }
     }
@@ -105,18 +112,23 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
 
     // check if any other bank is scheduled to use the DATA bus
     for (size_t b = 0; b < NUM_BANKS; b++) {
-        if (b == bank) continue;
+        if (b == bank)
+            continue;
+
+        if (mc->banks[b].num_commands == 0)
+            continue;
 
         // shared data bus will be used when banks are done processing commands:
         uint32_t sched_tf_start = mc->banks[b].busy_start + mc->banks[b].num_commands * BANK_BUSY_CYCLES;
         uint32_t sched_tf_end = sched_tf_start + DATA_TF_CYCLES - 1;
 
         // reject if the scheduled transfers would overlap with ours
-        if ((data_tf_end >= sched_tf_start ) || (data_tf_start <= sched_tf_end)) return 0;
+        if (!(data_tf_end < sched_tf_start || data_tf_start > sched_tf_end))
+            return 0;
     }
 
-    // // ======================
-    // // 3. is the bank free?
+    // ======================
+    // 3. is the bank free?
 
     // ensure no overlap between bank busy start and end
     
@@ -124,7 +136,9 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
     uint32_t sched_busy_end = sched_busy_start + mc->banks[bank].num_commands * BANK_BUSY_CYCLES - 1;
 
     uint32_t access_end = access_start + num_commands * BANK_BUSY_CYCLES - 1;
-    if (access_start <= sched_busy_end || access_end >= sched_busy_start) return 0;
+    // overlap if access_start <= sched_busy_end && access_end >= sched_busy_start
+    if (mc->banks[bank].num_commands != 0 && (access_start <= sched_busy_end && access_end >= sched_busy_start))
+        return 0;
 
     return 1;
 }
