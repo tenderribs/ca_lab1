@@ -115,13 +115,16 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
         if ((data_tf_end >= sched_tf_start ) || (data_tf_start <= sched_tf_end)) return 0;
     }
 
-    // ======================
-    // 3. is the bank free?
+    // // ======================
+    // // 3. is the bank free?
 
     // ensure no overlap between bank busy start and end
-    uint32_t busy_start = mc->banks[bank].busy_start;
-    uint32_t busy_end = busy_start + mc->banks[bank].num_commands * BANK_BUSY_CYCLES - 1;
-    if (access_start >= mc->banks[bank].busy_start) return 0;
+    
+    uint32_t sched_busy_start = mc->banks[bank].busy_start;
+    uint32_t sched_busy_end = sched_busy_start + mc->banks[bank].num_commands * BANK_BUSY_CYCLES - 1;
+
+    uint32_t access_end = access_start + num_commands * BANK_BUSY_CYCLES - 1;
+    if (access_start <= sched_busy_end || access_end >= sched_busy_start) return 0;
 
     return 1;
 }
@@ -217,6 +220,7 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
         if (mshrs[i].valid && !mshrs[i].done) {
             if (mshrs[i].fill_ready_cycle > 0 &&
                 current_cycle >= mshrs[i].fill_ready_cycle) {
+                printf("Marking fill as done\r\n");
                 // Fill is ready - mark MSHR as done
                 mshrs[i].done = 1;
             }
@@ -228,6 +232,7 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
         if (mshrs[i].valid && !mshrs[i].done &&
             mshrs[i].fill_ready_cycle == 0) {
             // Found unqueued L2 miss -> queue it
+            printf("found L2 miss\r\n");
 
             // Find free queue slot
             int queued = 0;
@@ -251,8 +256,13 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
             }
 
             if (!queued) {
-                // Queue full - should not happen with infinite queue
-                printf("MEM QUEUE IS FULL! Shouldn't ever happen");
+                // should never happen with infinite queue
+                printf("Couldn't add L2 miss to mem queue\r\n");
+
+                for (size_t bruh = 0; bruh < mc->queue_capacity; bruh++)
+                {
+                    printf("i=%i, queue[i]=%i\r\n", bruh, mc->queue[bruh].valid);
+                }
                 assert(0);
             }
         }
@@ -260,6 +270,13 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
 
     // Try to schedule a request
     MemRequest *to_schedule = select_request_to_schedule(mc, current_cycle);
+    
+    if (to_schedule == NULL) {
+        // printf("CANNOT SCHEDULE lmao\r\n");
+    } else {
+        printf("scheduled a request lmao\r\n");
+    }
+
     if (to_schedule != NULL) {
         // Issue the request
         issue_dram_request(mc, to_schedule, current_cycle);
