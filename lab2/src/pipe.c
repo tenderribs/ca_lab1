@@ -23,10 +23,9 @@ void print_op(Pipe_Op *op) {
     if (op)
         printf("OP (PC=%08x inst=%08x) src1=R%d (%08x) src2=R%d (%08x) dst=R%d "
                "valid %d (%08x) br=%d taken=%d dest=%08x mem=%d addr=%08x\n",
-               op->pc, op->instruction, op->reg_src1, op->reg_src1_value,
-               op->reg_src2, op->reg_src2_value, op->reg_dst,
-               op->reg_dst_value_ready, op->reg_dst_value, op->is_branch,
-               op->branch_taken, op->branch_dest, op->is_mem, op->mem_addr);
+               op->pc, op->instruction, op->reg_src1, op->reg_src1_value, op->reg_src2, op->reg_src2_value, op->reg_dst,
+               op->reg_dst_value_ready, op->reg_dst_value, op->is_branch, op->branch_taken, op->branch_dest, op->is_mem,
+               op->mem_addr);
     else
         printf("(null)\n");
 }
@@ -95,8 +94,7 @@ void pipe_cycle() {
     /* handle branch recoveries */
     if (pipe.branch_recover) {
 #ifdef DEBUG
-        printf("branch recovery: new dest %08x flush %d stages\n",
-               pipe.branch_dest, pipe.branch_flush);
+        printf("branch recovery: new dest %08x flush %d stages\n", pipe.branch_dest, pipe.branch_flush);
 #endif
 
         pipe.PC = pipe.branch_dest;
@@ -203,8 +201,7 @@ static void free_mshr(uint32_t address) {
     MSHR *mshr = NULL;
     for (size_t i = 0; i < NUM_MSHR; i++) {
         uint32_t block_addr = address & ~(BLOCK_SIZE - 1);
-        if (mshrs[i].valid &&
-            (mshrs[i].address & ~(BLOCK_SIZE - 1)) == block_addr) {
+        if (mshrs[i].valid && (mshrs[i].address & ~(BLOCK_SIZE - 1)) == block_addr) {
             mshr = &mshrs[i];
             break;
         }
@@ -252,8 +249,7 @@ void pipe_stage_mem() {
 
     uint32_t val = 0;
     if (op->is_mem) {
-        CacheAccessResult result =
-            l1_cache_access(&dcache, op->mem_addr & ~3, 0);
+        CacheAccessResult result = l1_cache_access(&dcache, op->mem_addr & ~3, 0);
 
         if (result == CACHE_NO_MSHR) {
             assert(0); // sanity check
@@ -336,8 +332,7 @@ void pipe_stage_mem() {
 
     case OP_SH:
 #ifdef DEBUG
-        printf("SH: addr %08x val %04x old word %08x\n", op->mem_addr,
-               op->mem_value & 0xFFFF, val);
+        printf("SH: addr %08x val %04x old word %08x\n", op->mem_addr, op->mem_value & 0xFFFF, val);
 #endif
         if (op->mem_addr & 2)
             val = (val & 0x0000FFFF) | (op->mem_value) << 16;
@@ -433,8 +428,7 @@ void pipe_stage_execute() {
             op->reg_dst_value = (int32_t)op->reg_src2_value >> op->shamt;
             break;
         case SUBOP_SRAV:
-            op->reg_dst_value =
-                (int32_t)op->reg_src2_value >> op->reg_src1_value;
+            op->reg_dst_value = (int32_t)op->reg_src2_value >> op->reg_src1_value;
             break;
         case SUBOP_JR:
         case SUBOP_JALR:
@@ -451,8 +445,7 @@ void pipe_stage_execute() {
              * update the values and re-set the stall cycle count
              * for a new operation.
              */
-            int64_t val = (int64_t)((int32_t)op->reg_src1_value) *
-                          (int64_t)((int32_t)op->reg_src2_value);
+            int64_t val = (int64_t)((int32_t)op->reg_src1_value) * (int64_t)((int32_t)op->reg_src2_value);
             uint64_t uval = (uint64_t)val;
             pipe.HI = (uval >> 32) & 0xFFFFFFFF;
             pipe.LO = (uval >> 0) & 0xFFFFFFFF;
@@ -461,8 +454,7 @@ void pipe_stage_execute() {
             pipe.multiplier_stall = 4;
         } break;
         case SUBOP_MULTU: {
-            uint64_t val =
-                (uint64_t)op->reg_src1_value * (uint64_t)op->reg_src2_value;
+            uint64_t val = (uint64_t)op->reg_src1_value * (uint64_t)op->reg_src2_value;
             pipe.HI = (val >> 32) & 0xFFFFFFFF;
             pipe.LO = (val >> 0) & 0xFFFFFFFF;
 
@@ -493,10 +485,8 @@ void pipe_stage_execute() {
 
         case SUBOP_DIVU:
             if (op->reg_src2_value != 0) {
-                pipe.HI =
-                    (uint32_t)op->reg_src1_value % (uint32_t)op->reg_src2_value;
-                pipe.LO =
-                    (uint32_t)op->reg_src1_value / (uint32_t)op->reg_src2_value;
+                pipe.HI = (uint32_t)op->reg_src1_value % (uint32_t)op->reg_src2_value;
+                pipe.LO = (uint32_t)op->reg_src1_value / (uint32_t)op->reg_src2_value;
             } else {
                 /* really this would be a div-by-0 exception */
                 pipe.HI = pipe.LO = 0;
@@ -557,13 +547,10 @@ void pipe_stage_execute() {
             op->reg_dst_value = op->reg_src1_value ^ op->reg_src2_value;
             break;
         case SUBOP_SLT:
-            op->reg_dst_value =
-                ((int32_t)op->reg_src1_value < (int32_t)op->reg_src2_value) ? 1
-                                                                            : 0;
+            op->reg_dst_value = ((int32_t)op->reg_src1_value < (int32_t)op->reg_src2_value) ? 1 : 0;
             break;
         case SUBOP_SLTU:
-            op->reg_dst_value =
-                (op->reg_src1_value < op->reg_src2_value) ? 1 : 0;
+            op->reg_dst_value = (op->reg_src1_value < op->reg_src2_value) ? 1 : 0;
             break;
         }
         break;
@@ -611,13 +598,11 @@ void pipe_stage_execute() {
         break;
     case OP_SLTI:
         op->reg_dst_value_ready = 1;
-        op->reg_dst_value =
-            (int32_t)op->reg_src1_value < (int32_t)op->se_imm16 ? 1 : 0;
+        op->reg_dst_value = (int32_t)op->reg_src1_value < (int32_t)op->se_imm16 ? 1 : 0;
         break;
     case OP_SLTIU:
         op->reg_dst_value_ready = 1;
-        op->reg_dst_value =
-            (uint32_t)op->reg_src1_value < (uint32_t)op->se_imm16 ? 1 : 0;
+        op->reg_dst_value = (uint32_t)op->reg_src1_value < (uint32_t)op->se_imm16 ? 1 : 0;
         break;
     case OP_ANDI:
         op->reg_dst_value_ready = 1;
@@ -782,8 +767,7 @@ void pipe_stage_decode() {
         /* memory ops */
         op->is_mem = 1;
         op->reg_src1 = rs;
-        if (opcode == OP_LW || opcode == OP_LH || opcode == OP_LHU ||
-            opcode == OP_LB || opcode == OP_LBU) {
+        if (opcode == OP_LW || opcode == OP_LH || opcode == OP_LHU || opcode == OP_LB || opcode == OP_LBU) {
             /* load */
             op->mem_write = 0;
             op->reg_dst = rt;

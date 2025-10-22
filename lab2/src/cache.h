@@ -61,13 +61,11 @@ typedef struct MSHR {
     uint8_t is_icache;         // 1 if for icache, 0 if for dcache
 } MSHR;
 
-
 /**
  * @param uint16_t capacity in bytes
  * @param uint8_t block_size in bytes
  */
-void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways,
-                 uint8_t block_size);
+void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways, uint8_t block_size);
 
 /* Release memory dynamically allocated for a cache */
 void free_cache(Cache *c);
@@ -78,8 +76,7 @@ void update_lru(Cache *c, size_t set, size_t block);
 /**
  * L1 cache access (instruction or data).
  */
-CacheAccessResult l1_cache_access(Cache *c, uint32_t address,
-                                  uint8_t is_icache);
+CacheAccessResult l1_cache_access(Cache *c, uint32_t address, uint8_t is_icache);
 
 /**
  * L2 cache probe (called immediately on L1 miss in same cycle).

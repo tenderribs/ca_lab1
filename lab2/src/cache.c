@@ -3,8 +3,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
-void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways,
-                 uint8_t block_size) {
+void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways, uint8_t block_size) {
     c->block_size = block_size;
     c->num_sets = capacity / (block_size * num_ways);
     c->num_ways = num_ways;
@@ -26,8 +25,8 @@ void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways,
     }
 
     // dynamically allocate zeroed memory for cache
-    c->sets = (Set *) calloc(c->num_sets, sizeof(Set));
-    
+    c->sets = (Set *)calloc(c->num_sets, sizeof(Set));
+
     for (size_t s = 0; s < c->num_sets; s++) {
         c->sets[s].blocks = (Block *)calloc(c->num_ways, sizeof(Block));
     }
@@ -49,8 +48,7 @@ void update_lru(Cache *c, size_t set, size_t block) {
 
     // increment the recency for valid blocks that were prev. more recent
     for (size_t b = 0; b < c->num_ways; b++) {
-        if (c->sets[set].blocks[b].valid &&
-            c->sets[set].blocks[b].recency < prev_recency) {
+        if (c->sets[set].blocks[b].valid && c->sets[set].blocks[b].recency < prev_recency) {
             c->sets[set].blocks[b].recency++;
         }
     }
@@ -64,8 +62,7 @@ static MSHR *find_mshr_for_address(uint32_t address) {
     uint32_t block_addr = address & ~(BLOCK_SIZE - 1);
 
     for (size_t i = 0; i < NUM_MSHR; i++) {
-        if (mshrs[i].valid &&
-            (mshrs[i].address & ~(BLOCK_SIZE - 1)) == block_addr) {
+        if (mshrs[i].valid && (mshrs[i].address & ~(BLOCK_SIZE - 1)) == block_addr) {
             return &mshrs[i];
         }
     }
@@ -86,8 +83,7 @@ static MSHR *allocate_mshr(uint32_t address, uint8_t is_icache) {
     return NULL;
 }
 
-CacheAccessResult l1_cache_access(Cache *c, uint32_t address,
-                                  uint8_t is_icache) {
+CacheAccessResult l1_cache_access(Cache *c, uint32_t address, uint8_t is_icache) {
     assert((address % 4 == 0) && "Address should be multiple of 4 bytes");
 
     // calculate the L1 set index and the tag
@@ -168,13 +164,11 @@ CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache) {
 
     // calculate the L2 set index and the tag
     uint32_t tag = (address >> (l2cache.block_bits + l2cache.set_bits));
-    uint32_t set =
-        ((address >> l2cache.block_bits) & ((1 << l2cache.set_bits) - 1));
+    uint32_t set = ((address >> l2cache.block_bits) & ((1 << l2cache.set_bits) - 1));
 
     // check L2 set for any hits in set
     for (size_t b = 0; b < l2cache.num_ways; b++) {
-        if (l2cache.sets[set].blocks[b].tag == tag &&
-            l2cache.sets[set].blocks[b].valid) {
+        if (l2cache.sets[set].blocks[b].tag == tag && l2cache.sets[set].blocks[b].valid) {
             // L2 HIT - will send fill notification after 15 cycles
             update_lru(&l2cache, set, b);
 
@@ -183,22 +177,19 @@ CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache) {
             extern uint32_t stat_cycles;
             mshr->fill_ready_cycle = stat_cycles + L2_HIT_LATENCY;
 
-            return CACHE_MISS_WAIT; // Not truly a miss, but L1 still waits for
-                                    // fill
+            return CACHE_MISS_WAIT; // Not truly a miss, but L1 still waits for fill
         }
     }
 
     // L2 MISS - need to go to memory
-    // Add request to memory controller queue (will be done in
-    // memory_controller_cycle) The memory controller will set mshr->done when
-    // data is ready
+    // Add request to memory controller queue (will be done in memory_controller_cycle) The memory
+    // controller will set mshr->done when data is ready
     return CACHE_MISS_WAIT;
 }
 
 void insert_l2_block(uint32_t address) {
     uint32_t tag = (address >> (l2cache.block_bits + l2cache.set_bits));
-    uint32_t set =
-        ((address >> l2cache.block_bits) & ((1 << l2cache.set_bits) - 1));
+    uint32_t set = ((address >> l2cache.block_bits) & ((1 << l2cache.set_bits) - 1));
 
     // Find victim using LRU
     size_t victim = 0;

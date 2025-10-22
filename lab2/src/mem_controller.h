@@ -12,16 +12,12 @@
 #define L2_TO_MEM_LATENCY 5
 #define MEM_TO_L2_LATENCY 5
 
-typedef enum {
-    ROW_BUFFER_HIT,
-    ROW_BUFFER_MISS,
-    ROW_BUFFER_CONFLICT
-} RowBufferStatus;
+typedef enum { ROW_BUFFER_HIT, ROW_BUFFER_MISS, ROW_BUFFER_CONFLICT } RowBufferStatus;
 
 // DRAM bank state
 typedef struct Bank {
-    uint32_t req_start; // cycle when bank started serving the request
-    uint32_t open_row; // currently open row (-1 if closed)
+    uint32_t req_start;   // cycle when bank started serving the request
+    uint32_t open_row;    // currently open row (-1 if closed)
     uint8_t has_open_row; // 1 if row buffer has valid row
     uint8_t num_commands; // 1, 2, or 3, number of cmds for req
 } Bank;
@@ -42,7 +38,7 @@ typedef struct MemController {
     uint32_t queue_size;          // current number of requests
     uint32_t cmd_bus_free_cycle;  // cycle when cmd/addr bus becomes free
     uint32_t data_bus_free_cycle; // cycle when data bus becomes free
-    Bank* banks;
+    Bank *banks;
 } MemController;
 
 void init_memory_controller(MemController *mc, uint32_t queue_capacity);
