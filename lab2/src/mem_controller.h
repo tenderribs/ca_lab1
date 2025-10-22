@@ -20,12 +20,11 @@ typedef enum {
 
 // DRAM bank state
 typedef struct Bank {
-    uint32_t busy_start; // cycle when bank started the request
-    uint8_t num_commands; // 1, 2, or 3, number of commands per req
-    uint32_t open_row;    // currently open row (-1 if closed)
+    uint32_t req_start; // cycle when bank started serving the request
+    uint32_t open_row; // currently open row (-1 if closed)
     uint8_t has_open_row; // 1 if row buffer has valid row
+    uint8_t num_commands; // 1, 2, or 3, number of cmds for req
 } Bank;
-
 
 // Memory request in queue
 typedef struct MemRequest {
@@ -43,7 +42,7 @@ typedef struct MemController {
     uint32_t queue_size;          // current number of requests
     uint32_t cmd_bus_free_cycle;  // cycle when cmd/addr bus becomes free
     uint32_t data_bus_free_cycle; // cycle when data bus becomes free
-    Bank banks[NUM_BANKS];
+    Bank* banks;
 } MemController;
 
 void init_memory_controller(MemController *mc, uint32_t queue_capacity);

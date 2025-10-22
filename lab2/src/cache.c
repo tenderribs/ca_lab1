@@ -25,18 +25,11 @@ void alloc_cache(Cache *c, uint32_t capacity, uint8_t num_ways,
         c->set_bits++;
     }
 
-    // dynamically allocate memory for cache
-    c->sets = malloc(sizeof(Set) * c->num_sets);
+    // dynamically allocate zeroed memory for cache
+    c->sets = (Set *) calloc(c->num_sets, sizeof(Set));
+    
     for (size_t s = 0; s < c->num_sets; s++) {
-        c->sets[s].blocks = malloc(sizeof(Block) * c->num_ways);
-
-        for (size_t b = 0; b < c->num_ways; b++) {
-            Block *block = &c->sets[s].blocks[b];
-
-            block->tag = 0;
-            block->valid = 0;
-            block->recency = 0;
-        }
+        c->sets[s].blocks = (Block *)calloc(c->num_ways, sizeof(Block));
     }
 }
 

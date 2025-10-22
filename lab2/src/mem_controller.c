@@ -4,22 +4,14 @@
 #include <assert.h>
 
 void init_memory_controller(MemController *mc, uint32_t queue_capacity) {
-    mc->queue = malloc(sizeof(MemRequest) * queue_capacity);
+    mc->queue = (MemRequest *)calloc(queue_capacity, sizeof(MemRequest));
     mc->queue_capacity = queue_capacity;
     mc->queue_size = 0;
     mc->cmd_bus_free_cycle = 0;
     mc->data_bus_free_cycle = 0;
 
     // Initialize all banks
-    for (int i = 0; i < NUM_BANKS; i++) {
-        mc->banks[i].has_open_row = 0;
-        mc->banks[i].open_row = 0;
-    }
-
-    // Initialize queue entries
-    for (uint32_t i = 0; i < queue_capacity; i++) {
-        mc->queue[i].valid = 0;
-    }
+    mc->banks = (Bank *)calloc(NUM_BANKS, sizeof(Bank));
 }
 
 void free_memory_controller(MemController *mc) { free(mc->queue); }
@@ -47,8 +39,8 @@ static RowBufferStatus get_row_buffer_status(Bank *bank, uint32_t row) {
 // Check if a request can be scheduled in the current cycle
 static int is_request_schedulable(MemController *mc, MemRequest *req,
                                   uint32_t curr_cycle) {
-    if (!req->valid) // sanity check
-        return 0;
+
+    assert(req->valid); // sanity check
 
     uint32_t bank = get_bank_index(req->address);
     uint32_t row = get_row_index(req->address);
@@ -73,33 +65,39 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
     }
     assert(num_commands && num_commands <= 3);
 
-    // CMD 
-    uint32_t access_start = curr_cycle; // ~ 0
-
+    // timing constraint example
+    //         ┌────┐            ┌────┐             
+    // cmd-bus │CMD1│            │CMD2│ 
+    //         ├────┴────────────┼────┴────────────┐                
+    // bank    │BANK_BUSY_CYCLES │BANK_BUSY_CYCLES │                
+    //         └─────────────────┴─────────────────┼──────────────┐ 
+    // data-bus                                    │DATA_TF_CYCLES│ 
+    //                   ─────────────────► t      └──────────────┘ 
+                                                     
     // ======================
     // 1. is CMD bus available for our commands?
 
     for (uint8_t our_cmd_nr = 0; our_cmd_nr < num_commands; our_cmd_nr++) {
         // calculate start and end cycle for all the cmds we execute
-        uint32_t our_cmd_start = access_start + our_cmd_nr * BANK_BUSY_CYCLES; // ~ 0, 100, 200
-        uint32_t our_cmd_end = our_cmd_start + CMD_CYCLES - 1;                  // ~ 3, 103, 203
+        uint32_t our_cmd_start =
+            curr_cycle + our_cmd_nr * BANK_BUSY_CYCLES;      // ~ 0, 100, 200
+        uint32_t our_cmd_end = our_cmd_start + CMD_CYCLES - 1; // ~ 3, 103, 203
 
-        // check if any other bank is scheduled to use the COMMAND bus
+        // check if any bank is scheduled to use the COMMAND bus
         for (size_t b = 0; b < NUM_BANKS; b++) {
-            if (b == bank)
-                continue;
 
-            // if the other bank has no scheduled commands, skip it
-            if (mc->banks[b].num_commands == 0)
-                continue;
+            // skip timining constraint check if bank hasn't been used yet
+            if (!mc->banks[b].has_open_row) continue;
 
-            // have to check each bank's scheduled commands' start and end
+            // check for overlaps with each other bank's scheduled commands' start and end
             for (uint8_t sched_cmd = 0; sched_cmd < mc->banks[b].num_commands; sched_cmd++) {
-                uint32_t sched_cmd_start = mc->banks[b].busy_start + sched_cmd * BANK_BUSY_CYCLES;
+                uint32_t sched_cmd_start = mc->banks[b].req_start + sched_cmd * BANK_BUSY_CYCLES;
                 uint32_t sched_cmd_end = sched_cmd_start + CMD_CYCLES - 1;
 
-                // reject if our access overlaps with an already scheduled command
-                if (!(our_cmd_end < sched_cmd_start || our_cmd_start > sched_cmd_end))
+                // reject if our access overlaps with an already scheduled request's
+                // commands
+                if (!(our_cmd_end < sched_cmd_start ||
+                      our_cmd_start > sched_cmd_end))
                     return 0;
             }
         }
@@ -109,20 +107,20 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
     // 2. is data bus free?
 
     // Data transfer 100 - 149
-    uint32_t data_tf_start = access_start + num_commands * BANK_BUSY_CYCLES; // ~ 100, 200, 300
-    uint32_t data_tf_end = data_tf_start + DATA_TF_CYCLES - 1; // ~ 149, 249, 349
-
+    uint32_t data_tf_start =
+        curr_cycle + num_commands * BANK_BUSY_CYCLES; // ~ 100, 200, 300
+    uint32_t data_tf_end =
+        data_tf_start + DATA_TF_CYCLES - 1; // ~ 149, 249, 349
 
     // check if any other bank is scheduled to use the DATA bus
     for (size_t b = 0; b < NUM_BANKS; b++) {
-        if (b == bank)
-            continue;
 
-        if (mc->banks[b].num_commands == 0)
-            continue;
+        // skip timining constraint check if bank hasn't been used yet
+        if (!mc->banks[b].has_open_row) continue;
 
         // shared data bus will be used when banks are done processing commands:
-        uint32_t sched_tf_start = mc->banks[b].busy_start + mc->banks[b].num_commands * BANK_BUSY_CYCLES;
+        uint32_t sched_tf_start = mc->banks[b].req_start +
+                                  mc->banks[b].num_commands * BANK_BUSY_CYCLES;
         uint32_t sched_tf_end = sched_tf_start + DATA_TF_CYCLES - 1;
 
         // reject if the scheduled transfers would overlap with ours
@@ -132,14 +130,15 @@ static int is_request_schedulable(MemController *mc, MemRequest *req,
 
     // ======================
     // 3. is the bank free?
+    uint32_t req_end = curr_cycle + num_commands * BANK_BUSY_CYCLES - 1;
 
     // ensure no overlap between bank scheduled start and end
-    uint32_t sched_start = mc->banks[bank].busy_start;
-    uint32_t sched_end = sched_start + mc->banks[bank].num_commands * BANK_BUSY_CYCLES - 1;
+    uint32_t sched_start = mc->banks[bank].req_start;
+    uint32_t sched_end =
+        sched_start + mc->banks[bank].num_commands * BANK_BUSY_CYCLES - 1;
 
-    uint32_t access_end = access_start + num_commands * BANK_BUSY_CYCLES - 1;
-    // overlap if access_start <= sched_end && access_end >= sched_start
-    if (mc->banks[bank].num_commands != 0 && (access_start <= sched_end && access_end >= sched_start))
+    // check for overlap
+    if (mc->banks[bank].open_row && !(req_end < sched_start || curr_cycle > sched_end))
         return 0;
 
     return 1;
@@ -197,10 +196,9 @@ static void issue_dram_request(MemController *mc, MemRequest *req,
                                uint32_t current_cycle) {
     uint32_t bank_idx = get_bank_index(req->address);
     uint32_t row = get_row_index(req->address);
-    Bank* bank = &mc->banks[bank_idx];
+    Bank *bank = &mc->banks[bank_idx];
 
     RowBufferStatus rb_status = get_row_buffer_status(bank, row);
-
 
     switch (rb_status) {
     case ROW_BUFFER_HIT:
@@ -217,14 +215,15 @@ static void issue_dram_request(MemController *mc, MemRequest *req,
     assert(bank->num_commands >= 1 && bank->num_commands <= 3);
 
     // Update bus and bank states
-    bank->busy_start = current_cycle;
+    bank->req_start = current_cycle;
     bank->has_open_row = 1;
     bank->open_row = row;
 
     // Calculate when fill will be complete
     // Data arrives at L2 after data transfer + latency back to L2
-    uint32_t fill_complete_cycle =
-        current_cycle + bank->num_commands * BANK_BUSY_CYCLES + DATA_TF_CYCLES + MEM_TO_L2_LATENCY;
+    uint32_t fill_complete_cycle = current_cycle +
+                                   bank->num_commands * BANK_BUSY_CYCLES +
+                                   DATA_TF_CYCLES + MEM_TO_L2_LATENCY;
 
     // Update MSHR
     req->mshr->fill_ready_cycle = fill_complete_cycle;
@@ -275,9 +274,9 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
                 // should never happen with infinite queue
                 printf("Couldn't add L2 miss to mem queue\r\n");
 
-                for (size_t bruh = 0; bruh < mc->queue_capacity; bruh++)
-                {
-                    printf("i=%i, queue[i]=%i\r\n", bruh, mc->queue[bruh].valid);
+                for (size_t bruh = 0; bruh < mc->queue_capacity; bruh++) {
+                    printf("i=%zu, queue[i]=%i\r\n", bruh,
+                           mc->queue[bruh].valid);
                 }
                 assert(0);
             }
@@ -286,7 +285,7 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
 
     // Try to schedule a request
     MemRequest *to_schedule = select_request_to_schedule(mc, current_cycle);
-    
+
     if (to_schedule == NULL) {
         // printf("CANNOT SCHEDULE lmao\r\n");
     } else {
