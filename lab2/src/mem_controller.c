@@ -119,6 +119,8 @@ static int is_request_schedulable(MemController *mc, MemRequest *req, uint32_t c
         uint32_t sched_tf_end = sched_tf_start + DATA_TF_CYCLES - 1;
 
         // reject if the scheduled transfers would overlap with ours
+        //      |sched_start      sched_end|
+        // end  |                          | start
         if (!(data_tf_end < sched_tf_start || data_tf_start > sched_tf_end))
             return 0;
     }
