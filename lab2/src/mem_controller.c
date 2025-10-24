@@ -215,8 +215,8 @@ static void issue_dram_request(MemController *mc, MemRequest *req, uint32_t curr
 
     // Calculate when fill will be complete
     // Data arrives at L2 after data transfer + latency back to L2
-    uint32_t fill_complete_cycle =
-        current_cycle + bank->num_commands * BANK_BUSY_CYCLES + DATA_TF_CYCLES + MEM_TO_L2_LATENCY;
+    uint32_t fill_complete_cycle = current_cycle + bank->num_commands * BANK_BUSY_CYCLES +
+                                   DATA_TF_CYCLES + MEM_TO_L2_LATENCY + L2_TO_MEM_LATENCY;
 
     // Update MSHR
     req->mshr->fill_ready_cycle = fill_complete_cycle;
@@ -227,7 +227,7 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
     for (size_t i = 0; i < NUM_MSHR; i++) {
         if (mshrs[i].valid && !mshrs[i].done) {
             if (mshrs[i].fill_ready_cycle > 0 && current_cycle >= mshrs[i].fill_ready_cycle) {
-                // printf("Marking fill as done\r\n");
+                printf("Marking fill as done\r\n");
                 // Fill is ready - mark MSHR as done
                 mshrs[i].done = 1;
             }
@@ -238,14 +238,14 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
     for (size_t i = 0; i < NUM_MSHR; i++) {
         if (mshrs[i].valid && !mshrs[i].done && mshrs[i].fill_ready_cycle == 0) {
             // Found unqueued L2 miss -> queue it
-            // printf("found L2 miss\r\n");
+            printf("found L2 miss\r\n");
 
             // Find free queue slot
             int queued = 0;
             for (uint32_t j = 0; j < mc->queue_capacity; j++) {
                 if (!mc->queue[j].valid) {
                     mc->queue[j].address = mshrs[i].address;
-                    mc->queue[j].arrival_cycle = current_cycle + L2_TO_MEM_LATENCY;
+                    mc->queue[j].arrival_cycle = current_cycle;
                     mc->queue[j].from_mem_stage = (mshrs[i].is_icache == 1) ? 0 : 1;
                     mc->queue[j].mshr = &mshrs[i];
                     mc->queue[j].valid = 1;

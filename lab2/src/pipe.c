@@ -796,7 +796,7 @@ void pipe_stage_fetch() {
         if (check_l1_fill_ready(&icache, l1_fetch_miss_addr)) {
             // Fill is ready - complete it and unstall next cycle
             complete_l1_fill(&icache, l1_fetch_miss_addr);
-
+            printf("Filling L1 cache in cycle 0x%08x\r\n", stat_cycles);
             free_mshr(l1_fetch_miss_addr);
             l1_fetch_waiting = 0;
             l1_fetch_miss_addr = 0;

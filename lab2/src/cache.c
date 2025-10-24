@@ -1,5 +1,6 @@
 #include "cache.h"
 #include "shell.h"
+#include "stdio.h"
 #include <assert.h>
 #include <stdlib.h>
 
@@ -95,10 +96,14 @@ CacheAccessResult l1_cache_access(Cache *c, uint32_t address, uint8_t is_icache)
         if (c->sets[set].blocks[b].tag == tag && c->sets[set].blocks[b].valid) {
             // HIT since tag matches and block is valid
             // -> update LRU positions of set's blocks
+            printf("Hit L1 cache\r\n");
+
             update_lru(c, set, b);
             return CACHE_HIT;
         }
     }
+
+    printf("MISSED L1 cache\r\n");
 
     // MISS -> check if request already pending
     MSHR *existing_mshr = find_mshr_for_address(address);
@@ -156,6 +161,8 @@ void complete_l1_fill(Cache *c, uint32_t address) {
 }
 
 CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache) {
+    printf("ACCESS L2 cache\r\n");
+
     // L2 cache can only be probed if there are free MSHRs
     MSHR *mshr = allocate_mshr(address, is_icache);
     if (mshr == NULL) {
@@ -172,6 +179,8 @@ CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache) {
             // L2 HIT - will send fill notification after 15 cycles
             update_lru(&l2cache, set, b);
 
+            printf("L2 HIT\r\n");
+
             // Mark when fill will be ready (current cycle is in shell.c
             // stat_cycles)
             extern uint32_t stat_cycles;
@@ -180,6 +189,8 @@ CacheAccessResult l2_cache_access(uint32_t address, uint8_t is_icache) {
             return CACHE_MISS_WAIT; // Not truly a miss, but L1 still waits for fill
         }
     }
+
+    printf("L2 MISS\r\n");
 
     // L2 MISS - need to go to memory
     // Add request to memory controller queue (will be done in memory_controller_cycle) The memory
