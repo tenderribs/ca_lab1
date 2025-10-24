@@ -81,6 +81,8 @@ static int is_request_schedulable(MemController *mc, MemRequest *req, uint32_t c
         for (size_t b = 0; b < NUM_BANKS; b++) {
 
             // skip timining constraint check if bank hasn't been used yet
+            // has_open_row=1 can be used as a proxy for this situation because rows are never
+            // closed due to row refreshes.
             if (!mc->banks[b].has_open_row)
                 continue;
 
@@ -142,8 +144,10 @@ static MemRequest *select_request_to_schedule(MemController *mc, uint32_t curren
 
     // check all the requests in the queue
     for (uint32_t i = 0; i < mc->queue_capacity; i++) {
-        if (!mc->queue[i].valid)
+        // only consider requests that have arrived in DRAM
+        if (!mc->queue[i].valid || current_cycle < mc->queue[i].arrival_cycle)
             continue;
+
         if (!is_request_schedulable(mc, &mc->queue[i], current_cycle))
             continue;
 
@@ -223,7 +227,7 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
     for (size_t i = 0; i < NUM_MSHR; i++) {
         if (mshrs[i].valid && !mshrs[i].done) {
             if (mshrs[i].fill_ready_cycle > 0 && current_cycle >= mshrs[i].fill_ready_cycle) {
-                printf("Marking fill as done\r\n");
+                // printf("Marking fill as done\r\n");
                 // Fill is ready - mark MSHR as done
                 mshrs[i].done = 1;
             }
@@ -234,7 +238,7 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
     for (size_t i = 0; i < NUM_MSHR; i++) {
         if (mshrs[i].valid && !mshrs[i].done && mshrs[i].fill_ready_cycle == 0) {
             // Found unqueued L2 miss -> queue it
-            printf("found L2 miss\r\n");
+            // printf("found L2 miss\r\n");
 
             // Find free queue slot
             int queued = 0;
@@ -248,8 +252,7 @@ void memory_controller_cycle(MemController *mc, uint32_t current_cycle) {
                     mc->queue_size++;
                     queued = 1;
 
-                    // Mark MSHR with impossible value so we don't queue it
-                    // again
+                    // Mark MSHR with impossible nonzero value so we don't queue it again
                     mshrs[i].fill_ready_cycle = 1;
                     break;
                 }

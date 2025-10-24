@@ -23,9 +23,9 @@ void print_op(Pipe_Op *op) {
     if (op)
         printf("OP (PC=%08x inst=%08x) src1=R%d (%08x) src2=R%d (%08x) dst=R%d "
                "valid %d (%08x) br=%d taken=%d dest=%08x mem=%d addr=%08x\n",
-               op->pc, op->instruction, op->reg_src1, op->reg_src1_value, op->reg_src2, op->reg_src2_value, op->reg_dst,
-               op->reg_dst_value_ready, op->reg_dst_value, op->is_branch, op->branch_taken, op->branch_dest, op->is_mem,
-               op->mem_addr);
+               op->pc, op->instruction, op->reg_src1, op->reg_src1_value, op->reg_src2,
+               op->reg_src2_value, op->reg_dst, op->reg_dst_value_ready, op->reg_dst_value,
+               op->is_branch, op->branch_taken, op->branch_dest, op->is_mem, op->mem_addr);
     else
         printf("(null)\n");
 }
@@ -74,27 +74,17 @@ void pipe_cycle() {
     printf("\n");
 #endif
 
-    // Simulate memory controller (processes DRAM, L2 fills, etc.)
-    memory_controller_cycle(&mem_controller, stat_cycles);
-
     pipe_stage_wb();
     pipe_stage_mem();
     pipe_stage_execute();
     pipe_stage_decode();
     pipe_stage_fetch();
 
-    // if final cycle, free cache memory
-    if (RUN_BIT == 0) {
-        free_cache(&icache);
-        free_cache(&dcache);
-        free_cache(&l2cache);
-        free_memory_controller(&mem_controller);
-    }
-
     /* handle branch recoveries */
     if (pipe.branch_recover) {
 #ifdef DEBUG
-        printf("branch recovery: new dest %08x flush %d stages\n", pipe.branch_dest, pipe.branch_flush);
+        printf("branch recovery: new dest %08x flush %d stages\n", pipe.branch_dest,
+               pipe.branch_flush);
 #endif
 
         pipe.PC = pipe.branch_dest;
@@ -142,6 +132,17 @@ void pipe_cycle() {
         pipe.branch_flush = 0;
 
         stat_squash++;
+    }
+
+    // Simulate memory controller (processes DRAM, L2 fills, etc.)
+    memory_controller_cycle(&mem_controller, stat_cycles);
+
+    // if final cycle, free cache memory
+    if (RUN_BIT == 0) {
+        free_cache(&icache);
+        free_cache(&dcache);
+        free_cache(&l2cache);
+        free_memory_controller(&mem_controller);
     }
 }
 
@@ -224,7 +225,6 @@ void pipe_stage_mem() {
             complete_l1_fill(&dcache, l1_mem_miss_addr);
 
             free_mshr(l1_mem_miss_addr);
-
             l1_mem_waiting = 0;
             l1_mem_miss_addr = 0;
             // Will process the instruction next cycle
@@ -235,8 +235,7 @@ void pipe_stage_mem() {
     /* if there was a cancelled miss, check if fill is ready to free MSHR */
     if (l1_mem_cancelled) {
         if (check_l1_fill_ready(&dcache, l1_mem_miss_addr)) {
-            // Fill is ready but was cancelled - just free MSHR, don't insert
-            // into L1
+            // Fill is ready but was cancelled - just free MSHR, don't insert into L1
             free_mshr(l1_mem_miss_addr);
             l1_mem_cancelled = 0;
             l1_mem_miss_addr = 0;
@@ -445,7 +444,8 @@ void pipe_stage_execute() {
              * update the values and re-set the stall cycle count
              * for a new operation.
              */
-            int64_t val = (int64_t)((int32_t)op->reg_src1_value) * (int64_t)((int32_t)op->reg_src2_value);
+            int64_t val =
+                (int64_t)((int32_t)op->reg_src1_value) * (int64_t)((int32_t)op->reg_src2_value);
             uint64_t uval = (uint64_t)val;
             pipe.HI = (uval >> 32) & 0xFFFFFFFF;
             pipe.LO = (uval >> 0) & 0xFFFFFFFF;
@@ -767,7 +767,8 @@ void pipe_stage_decode() {
         /* memory ops */
         op->is_mem = 1;
         op->reg_src1 = rs;
-        if (opcode == OP_LW || opcode == OP_LH || opcode == OP_LHU || opcode == OP_LB || opcode == OP_LBU) {
+        if (opcode == OP_LW || opcode == OP_LH || opcode == OP_LHU || opcode == OP_LB ||
+            opcode == OP_LBU) {
             /* load */
             op->mem_write = 0;
             op->reg_dst = rt;
@@ -797,7 +798,6 @@ void pipe_stage_fetch() {
             complete_l1_fill(&icache, l1_fetch_miss_addr);
 
             free_mshr(l1_fetch_miss_addr);
-
             l1_fetch_waiting = 0;
             l1_fetch_miss_addr = 0;
             // Will fetch the instruction next cycle
@@ -808,14 +808,12 @@ void pipe_stage_fetch() {
     /* if there was a cancelled miss, check if fill is ready to free MSHR */
     if (l1_fetch_cancelled) {
         if (check_l1_fill_ready(&icache, l1_fetch_miss_addr)) {
-            // Fill is ready but was cancelled - just free MSHR, don't insert
-            // into L1
+            // Fill is ready but was cancelled - just free MSHR, don't insert into L1
             free_mshr(l1_fetch_miss_addr);
             l1_fetch_cancelled = 0;
             l1_fetch_miss_addr = 0;
         }
-        // Don't return - allow stage to fetch (new PC was set by branch
-        // recovery)
+        // Don't return - allow stage to fetch (new PC was set by branch recovery)
     }
 
     // Check I-cache

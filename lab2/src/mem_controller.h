@@ -25,7 +25,7 @@ typedef struct Bank {
 // Memory request in queue
 typedef struct MemRequest {
     uint32_t address;
-    uint32_t arrival_cycle; // cycle when request arrived
+    uint32_t arrival_cycle; // cycle when request arrived in DRAM
     uint8_t from_mem_stage; // 1 if from MEM stage, 0 if from fetch
     MSHR *mshr;             // pointer to associated MSHR
     uint8_t valid;          // 1 if entry valid
