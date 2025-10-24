@@ -32,21 +32,20 @@ typedef struct Pipe_Op {
     int shamt;
 
     /* register source values */
-    int reg_src1, reg_src2; /* 0 -- 31 if this inst has register source(s), or
-                               -1 otherwise */
+    int reg_src1, reg_src2;                  /* 0 -- 31 if this inst has register source(s), or
+                                                -1 otherwise */
     uint32_t reg_src1_value, reg_src2_value; /* values of operands from source
                                                 regs */
 
     /* memory access information */
-    int is_mem;        /* is this a load/store? */
-    uint32_t mem_addr; /* address if applicable */
-    int mem_write;     /* is this a write to memory? */
-    uint32_t
-        mem_value; /* value loaded from memory or to be written to memory */
+    int is_mem;              /* is this a load/store? */
+    uint32_t mem_addr;       /* address if applicable */
+    int mem_write;           /* is this a write to memory? */
+    uint32_t mem_value;      /* value loaded from memory or to be written to memory */
     uint32_t mem_value_read; // temp variable for cache reads if stage stalls
     /* register destination information */
-    int reg_dst; /* 0 -- 31 if this inst has a destination register, -1
-                    otherwise */
+    int reg_dst;             /* 0 -- 31 if this inst has a destination register, -1
+                                otherwise */
     uint32_t reg_dst_value;  /* value to write into dest reg. */
     int reg_dst_value_ready; /* destination value produced yet? */
 
@@ -86,8 +85,8 @@ typedef struct Pipe_State {
      * the branch as necessary. */
     int branch_recover;   /* set to '1' to load a new PC */
     uint32_t branch_dest; /* next fetch will be from this PC */
-    int branch_flush; /* how many stages to flush during recover? (1 = fetch, 2
-                         = fetch/decode, ...) */
+    int branch_flush;     /* how many stages to flush during recover? (1 = fetch, 2
+                             = fetch/decode, ...) */
 
     /* multiplier stall info */
     int multiplier_stall; /* number of remaining cycles until HI/LO are ready */
