@@ -21,7 +21,7 @@ static uint32_t get_bank_index(uint32_t address) {
 }
 
 static uint32_t get_row_index(uint32_t address) {
-    return address >> 13; // bits [31:13]
+    return address >> 16; // bits [31:16]
 }
 
 static RowBufferStatus get_row_buffer_status(Bank *bank, uint32_t row) {
