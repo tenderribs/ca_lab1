@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
     // Allocate DPUs
     struct dpu_set_t dpu_set, dpu;
     uint32_t nr_of_dpus;
-    DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpu_set));
+    DPU_ASSERT(dpu_alloc(p.n_dpus, NULL, &dpu_set));
     DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus)); // Number of DPUs in the DPU set
     printf("Allocated %d DPU(s)\t", nr_of_dpus);
 
@@ -80,13 +80,15 @@ int main(int argc, char **argv) {
         i = 0;
 
         printf("xfer CPU-DPU iter=%i\r\n", rep);
-
-#ifdef SERIAL   // Serial transfers
-        //@@ INSERT SERIAL CPU-DPU TRANSFER HERE (i.e., copy bufferX to DPU MRAM)
-        // prepare host buffer https://sdk.upmem.com/2025.1.0/032_DPURuntimeService_HostCommunication.html
+#if defined(SERIAL) || defined(PARALLEL)
+        // prepare host buffer https://sdk.upmem.com/2025.1.0/032_DPURuntimeService_HostCommunication.html#rank-transfer-interface
         DPU_FOREACH(dpu_set, dpu) {
             DPU_ASSERT(dpu_prepare_xfer(dpu, bufferX));
         }
+#endif
+
+#ifdef SERIAL   // Serial transfers
+        //@@ INSERT SERIAL CPU-DPU TRANSFER HERE (i.e., copy bufferX to DPU MRAM)
 
         DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
 
@@ -96,11 +98,6 @@ int main(int argc, char **argv) {
 
 #else // Parallel transfers
         //@@ INSERT PARALLEL CPU-DPU TRANSFER HERE (i.e., copy bufferX to DPU MRAM)
-        // prepare host buffer https://sdk.upmem.com/2025.1.0/032_DPURuntimeService_HostCommunication.html
-        DPU_FOREACH(dpu_set, dpu) {
-            DPU_ASSERT(dpu_prepare_xfer(dpu, bufferX));
-        }
-
         DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
         DPU_ASSERT(dpu_sync(dpu_set)); // Wait for the end of the execution on the DPU set.
 #endif
@@ -123,14 +120,21 @@ int main(int argc, char **argv) {
             start(&timer, 3, rep - p.n_warmup); // Start timer (DPU-CPU transfers)
         i = 0;
         // Copy output array
+#if defined(SERIAL) || defined(PARALLEL)
+        // prepare host buffer https://sdk.upmem.com/2025.1.0/032_DPURuntimeService_HostCommunication.html#rank-transfer-interface
+        DPU_FOREACH(dpu_set, dpu) {
+            DPU_ASSERT(dpu_prepare_xfer(dpu, X));
+        }
+#endif
+
 #ifdef SERIAL // Serial transfers
-
         //@@ INSERT SERIAL DPU-CPU TRANSFER HERE
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
 
-#else // Parallel transfers
-
+        #else // Parallel transfers
         //@@ INSERT PARALLEL DPU-CPU TRANSFER HERE
-
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
+        DPU_ASSERT(dpu_sync(dpu_set));
 #endif
         if(rep >= p.n_warmup)
             stop(&timer, 3); // Stop timer (DPU-CPU transfers)
