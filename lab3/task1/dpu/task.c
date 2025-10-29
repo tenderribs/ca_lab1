@@ -12,6 +12,9 @@
 
 #include "../support/common.h"
 
+// MRAM buffer
+__mram_noinit T buffer[BUFFER_SIZE];
+
 // Input and output arguments
 __host dpu_arguments_t DPU_INPUT_ARGUMENTS;
 
@@ -31,6 +34,7 @@ int main_kernel1() {
 #if PRINT
     printf("tasklet_id = %u\n", tasklet_id);
 #endif
+
     if (tasklet_id == 0){ 
         mem_reset(); // Reset the heap
     }

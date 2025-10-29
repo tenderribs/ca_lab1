@@ -1,0 +1,1 @@
+make clean && NR_DPUS=64 TRANSFER=SERIAL make && ./bin/host_code -w 2 -e 10 -i 262144
