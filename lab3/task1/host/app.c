@@ -90,15 +90,16 @@ int main(int argc, char **argv) {
 #ifdef SERIAL   // Serial transfers
         //@@ INSERT SERIAL CPU-DPU TRANSFER HERE (i.e., copy bufferX to DPU MRAM)
 
-        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
 
 #elif BROADCAST // Broadcast transfers
         //@@ INSERT BROADCAST CPU-DPU TRANSFER HERE (i.e., copy bufferX to DPU MRAM)
-        DPU_ASSERT(dpu_broadcast_to(dpu_set, "dpu_buffer", 0, bufferX, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
+        DPU_ASSERT(dpu_broadcast_to(dpu_set, DPU_MRAM_HEAP_POINTER_NAME, 0, bufferX, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
 
 #else // Parallel transfers
         //@@ INSERT PARALLEL CPU-DPU TRANSFER HERE (i.e., copy bufferX to DPU MRAM)
-        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
+
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
         DPU_ASSERT(dpu_sync(dpu_set)); // Wait for the end of the execution on the DPU set.
 #endif
 
@@ -129,11 +130,11 @@ int main(int argc, char **argv) {
 
 #ifdef SERIAL // Serial transfers
         //@@ INSERT SERIAL DPU-CPU TRANSFER HERE
-        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
 
         #else // Parallel transfers
         //@@ INSERT PARALLEL DPU-CPU TRANSFER HERE
-        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME, 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
         DPU_ASSERT(dpu_sync(dpu_set));
 #endif
         if(rep >= p.n_warmup)
