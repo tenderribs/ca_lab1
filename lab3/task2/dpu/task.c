@@ -17,17 +17,19 @@
 __host dpu_arguments_t DPU_INPUT_ARGUMENTS;
 __host dpu_results_t DPU_RESULTS[NR_TASKLETS];
 
+__mram_no_init T* DPU_BUFFER;
+
 // Barrier
 BARRIER_INIT(my_barrier, NR_TASKLETS);
 
 extern int main_kernel1(void);
 int (*kernels[nr_kernels])(void) = {main_kernel1};
-int main(void) { 
+int main(void) {
     // Kernel
-    return kernels[DPU_INPUT_ARGUMENTS.kernel](); 
+    return kernels[DPU_INPUT_ARGUMENTS.kernel]();
 }
 
-// AXPY: Computes AXPY for a cached block 
+// AXPY: Computes AXPY for a cached block
 static void axpy(T *bufferY, T *bufferX, T alpha, unsigned int l_size) {
 
     //@@ INSERT AXPY CODE
@@ -40,7 +42,7 @@ int main_kernel1() {
 #if PRINT
     printf("tasklet_id = %u\n", tasklet_id);
 #endif
-    if (tasklet_id == 0){ 
+    if (tasklet_id == 0){
         mem_reset(); // Reset the heap
 #ifdef CYCLES
         perfcounter_config(COUNT_CYCLES, true); // Initialize once the cycle counter
@@ -68,7 +70,8 @@ int main_kernel1() {
 
     // Initialize a local cache in WRAM to store the MRAM block
     //@@ INSERT WRAM ALLOCATION HERE
-	
+
+
     for(unsigned int byte_index = base_tasklet; byte_index < input_size_dpu_bytes; byte_index += BLOCK_SIZE * NR_TASKLETS){
 
         // Bound checking
@@ -88,6 +91,6 @@ int main_kernel1() {
 #if defined(CYCLES) || defined(INSTRUCTIONS)
     result->count += counter_stop(&count); // STOP TIMER
 #endif
-	
+
     return 0;
 }
