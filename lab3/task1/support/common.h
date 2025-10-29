@@ -1,6 +1,9 @@
 #ifndef _COMMON_H_
 #define _COMMON_H_
 
+#define XSTR(x) STR(x)
+#define STR(x) #x
+
 // Data type
 #define T int64_t
 #define DIV 3 // Shift right to divide by sizeof(T)
