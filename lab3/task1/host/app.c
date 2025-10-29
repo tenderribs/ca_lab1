@@ -44,21 +44,21 @@ int main(int argc, char **argv) {
 
     // Timer declaration
     Timer timer;
-	
+
     // Allocate DPUs
     struct dpu_set_t dpu_set, dpu;
     uint32_t nr_of_dpus;
-    DPU_ASSERT(dpu_alloc(NR_DPUS, NULL, &dpu_set));
+    DPU_ASSERT(dpu_alloc(p.n_dpus, NULL, &dpu_set));
     DPU_ASSERT(dpu_get_nr_dpus(dpu_set, &nr_of_dpus)); // Number of DPUs in the DPU set
     printf("Allocated %d DPU(s)\t", nr_of_dpus);
 
     // Load binary
     DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
 
-    // Input size 
-    const unsigned int input_size = p.input_size; // Total input size 
+    // Input size
+    const unsigned int input_size = p.input_size; // Total input size
     const unsigned int input_size_dpu = divceil(input_size, nr_of_dpus); // Input size per DPU (max.)
-    const unsigned int input_size_dpu_8bytes = 
+    const unsigned int input_size_dpu_8bytes =
         ((input_size_dpu * sizeof(T)) % 8) != 0 ? roundup(input_size_dpu, 8) : input_size_dpu; // Input size per DPU (max.), 8-byte aligned
 
     // Input/output allocation in host main memory
@@ -78,23 +78,33 @@ int main(int argc, char **argv) {
         if(rep >= p.n_warmup)
             start(&timer, 1, rep - p.n_warmup); // Start timer (CPU-DPU transfers)
         i = 0;
-        // Copy input arrays
-#ifdef SERIAL // Serial transfers
 
+        printf("xfer CPU-DPU iter=%i\r\n", rep);
+#if defined(SERIAL) || defined(PARALLEL)
+        // prepare host buffer https://sdk.upmem.com/2025.1.0/032_DPURuntimeService_HostCommunication.html#rank-transfer-interface
+        DPU_FOREACH(dpu_set, dpu) {
+            DPU_ASSERT(dpu_prepare_xfer(dpu, bufferX));
+        }
+#endif
+
+#ifdef SERIAL   // Serial transfers
         //@@ INSERT SERIAL CPU-DPU TRANSFER HERE (i.e., copy bufferX to DPU MRAM)
-        
-#elif BROADCAST // Broadcast transfers
 
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
+
+#elif BROADCAST // Broadcast transfers
         //@@ INSERT BROADCAST CPU-DPU TRANSFER HERE (i.e., copy bufferX to DPU MRAM)
+        DPU_ASSERT(dpu_broadcast_to(dpu_set, "dpu_buffer", 0, bufferX, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
 
 #else // Parallel transfers
-
         //@@ INSERT PARALLEL CPU-DPU TRANSFER HERE (i.e., copy bufferX to DPU MRAM)
-
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
+        DPU_ASSERT(dpu_sync(dpu_set)); // Wait for the end of the execution on the DPU set.
 #endif
-        if(rep >= p.n_warmup)
+
+        if (rep >= p.n_warmup)
             stop(&timer, 1); // Stop timer (CPU-DPU transfers)
-		
+
         /*printf("Run program on DPU(s) \n");
         // Run DPU kernel
         if(rep >= p.n_warmup) {
@@ -110,19 +120,26 @@ int main(int argc, char **argv) {
             start(&timer, 3, rep - p.n_warmup); // Start timer (DPU-CPU transfers)
         i = 0;
         // Copy output array
+#if defined(SERIAL) || defined(PARALLEL)
+        // prepare host buffer https://sdk.upmem.com/2025.1.0/032_DPURuntimeService_HostCommunication.html#rank-transfer-interface
+        DPU_FOREACH(dpu_set, dpu) {
+            DPU_ASSERT(dpu_prepare_xfer(dpu, X));
+        }
+#endif
+
 #ifdef SERIAL // Serial transfers
-
         //@@ INSERT SERIAL DPU-CPU TRANSFER HERE
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
 
-#else // Parallel transfers
-
+        #else // Parallel transfers
         //@@ INSERT PARALLEL DPU-CPU TRANSFER HERE
-
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, "dpu_buffer", 0, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
+        DPU_ASSERT(dpu_sync(dpu_set));
 #endif
         if(rep >= p.n_warmup)
             stop(&timer, 3); // Stop timer (DPU-CPU transfers)
     }
-	
+
     // Print timing results
     printf("CPU-DPU ");
     print(&timer, 1, p.n_reps);
@@ -134,7 +151,7 @@ int main(int argc, char **argv) {
     // Check output
     bool status = true;
     for (i = 0; i < input_size; i++) {
-        if(X_host[i] != X[i]){ 
+        if(X_host[i] != X[i]){
             status = false;
             printf("%d: %lu -- %lu\n", i, X_host[i], X[i]);
         }
@@ -149,6 +166,6 @@ int main(int argc, char **argv) {
     free(X);
     free(X_host);
     DPU_ASSERT(dpu_free(dpu_set)); // Deallocate DPUs
-	
+
     return status ? 0 : -1;
 }
