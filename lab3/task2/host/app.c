@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
     double cc = 0;
     double cc_min = 0;
 #endif
-	
+
     // Allocate DPUs
     struct dpu_set_t dpu_set, dpu;
     uint32_t nr_of_dpus;
@@ -68,12 +68,12 @@ int main(int argc, char **argv) {
     // Load binary
     DPU_ASSERT(dpu_load(dpu_set, DPU_BINARY, NULL));
 
-    // Input size 
-    const unsigned int input_size = p.input_size; // Total input size 
-    const unsigned int input_size_8bytes = 
+    // Input size
+    const unsigned int input_size = p.input_size; // Total input size
+    const unsigned int input_size_8bytes =
         ((input_size * sizeof(T)) % 8) != 0 ? roundup(input_size, 8) : input_size; // Total input size, 8-byte aligned
     const unsigned int input_size_dpu = divceil(input_size, nr_of_dpus); // Input size per DPU (max.)
-    const unsigned int input_size_dpu_8bytes = 
+    const unsigned int input_size_dpu_8bytes = // number of elements per DPU
         ((input_size_dpu * sizeof(T)) % 8) != 0 ? roundup(input_size_dpu, 8) : input_size_dpu; // Input size per DPU (max.), 8-byte aligned
 
     // Input/output allocation in host main memory
@@ -104,13 +104,13 @@ int main(int argc, char **argv) {
         unsigned int kernel = 0;
         dpu_arguments_t input_arguments[NR_DPUS];
         for(i=0; i<nr_of_dpus-1; i++) {
-            input_arguments[i].size=input_size_dpu_8bytes * sizeof(T); 
-            input_arguments[i].transfer_size=input_size_dpu_8bytes * sizeof(T); 
+            input_arguments[i].size=input_size_dpu_8bytes * sizeof(T);
+            input_arguments[i].transfer_size=input_size_dpu_8bytes * sizeof(T);
             input_arguments[i].kernel=kernel;
             input_arguments[i].alpha=alpha;
         }
-        input_arguments[nr_of_dpus-1].size=(input_size_8bytes - input_size_dpu_8bytes * (NR_DPUS-1)) * sizeof(T); 
-        input_arguments[nr_of_dpus-1].transfer_size=input_size_dpu_8bytes * sizeof(T); 
+        input_arguments[nr_of_dpus-1].size=(input_size_8bytes - input_size_dpu_8bytes * (NR_DPUS-1)) * sizeof(T);
+        input_arguments[nr_of_dpus-1].transfer_size=input_size_dpu_8bytes * sizeof(T);
         input_arguments[nr_of_dpus-1].kernel=kernel;
         input_arguments[nr_of_dpus-1].alpha=alpha;
 
@@ -125,18 +125,48 @@ int main(int argc, char **argv) {
         DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, "DPU_INPUT_ARGUMENTS", 0, sizeof(input_arguments[0]), DPU_XFER_DEFAULT));
 
         // Copy input arrays
-#ifdef SERIAL // Serial transfers
 
+        const uint32_t x_offset = 0;
+        const uint32_t y_offset = input_size_dpu_8bytes * sizeof(T);
+
+        #ifdef SERIAL // Serial transfers
         //@@ INSERT SERIAL CPU-DPU TRANSFER HERE
+
+        i = 0; // Transfer X vector chunks to DPUs @ MRAM heap end
+        DPU_FOREACH(dpu_set, dpu, i) {
+            DPU_ASSERT(dpu_prepare_xfer(dpu, &X[i * input_size_dpu_8bytes]));
+        }
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, x_offset, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
+
+        i = 0; // Transfer Y vector chunks to DPUs @ MRAM heap end
+        DPU_FOREACH(dpu_set, dpu, i) {
+            DPU_ASSERT(dpu_prepare_xfer(dpu, &Y[i * input_size_dpu_8bytes]));
+        }
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, y_offset, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
+
 
 #else // Parallel transfers
 
         //@@ INSERT PARALLEL CPU-DPU TRANSFER HERE
+        i = 0; // Transfer X vector chunks to DPUs @ MRAM heap end
+        DPU_FOREACH(dpu_set, dpu, i) {
+            DPU_ASSERT(dpu_prepare_xfer(dpu, &X[i * input_size_dpu_8bytes]));
+        }
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, x_offset, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
+
+        i = 0; // Transfer Y vector chunks to DPUs @ MRAM heap end
+        DPU_FOREACH(dpu_set, dpu, i) {
+            DPU_ASSERT(dpu_prepare_xfer(dpu, &Y[i * input_size_dpu_8bytes]));
+        }
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_TO_DPU, DPU_MRAM_HEAP_POINTER_NAME, y_offset, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
+
+        // wait for async transfers to complete
+        DPU_ASSERT(dpu_sync(dpu_set));
 
 #endif
         if(rep >= p.n_warmup)
             stop(&timer, 1); // Stop timer (CPU-DPU transfers)
-		
+
         printf("Run program on DPU(s) \n");
         // Run DPU kernel
         if(rep >= p.n_warmup) {
@@ -167,11 +197,24 @@ int main(int argc, char **argv) {
 #ifdef SERIAL // Serial transfers
 
         //@@ INSERT SERIAL DPU-CPU TRANSFER HERE
+        i = 0; // Copy Y vector chunks from DPUs
+        DPU_FOREACH(dpu_set, dpu, i) {
+            DPU_ASSERT(dpu_prepare_xfer(dpu, &Y[i * input_size_dpu_8bytes]));
+        }
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME, y_offset, input_size_dpu_8bytes * sizeof(T), DPU_XFER_DEFAULT));
+
 
 #else // Parallel transfers
 
         //@@ INSERT PARALLEL DPU-CPU TRANSFER HERE
+        i = 0; // Copy Y vector chunks from DPUs
+        DPU_FOREACH(dpu_set, dpu, i) {
+            DPU_ASSERT(dpu_prepare_xfer(dpu, &Y[i * input_size_dpu_8bytes]));
+        }
+        DPU_ASSERT(dpu_push_xfer(dpu_set, DPU_XFER_FROM_DPU, DPU_MRAM_HEAP_POINTER_NAME, y_offset, input_size_dpu_8bytes * sizeof(T), DPU_XFER_ASYNC));
 
+        // wait for async transfers to complete
+        DPU_ASSERT(dpu_sync(dpu_set));
 #endif
         if(rep >= p.n_warmup)
             stop(&timer, 3); // Stop timer (DPU-CPU transfers)
@@ -217,7 +260,7 @@ int main(int argc, char **argv) {
 #elif INSTRUCTIONS
     printf("DPU instructions  = %g\n", cc / p.n_reps);
 #endif
-	
+
     // Print timing results
     printf("CPU ");
     print(&timer, 0, p.n_reps);
@@ -231,7 +274,7 @@ int main(int argc, char **argv) {
     // Check output
     bool status = true;
     for (i = 0; i < input_size; i++) {
-        if(Y_host[i] != Y[i]){ 
+        if(Y_host[i] != Y[i]){
             status = false;
             printf("%d: %u -- %u\n", i, Y_host[i], Y[i]);
         }
@@ -247,6 +290,6 @@ int main(int argc, char **argv) {
     free(Y);
     free(Y_host);
     DPU_ASSERT(dpu_free(dpu_set)); // Deallocate DPUs
-	
+
     return status ? 0 : -1;
 }
