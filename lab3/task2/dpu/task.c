@@ -75,17 +75,18 @@ int main_kernel1() {
     // base addresses where this tasklet will store each transferred block
     T* wram_base_addr_X = mem_alloc(BLOCK_SIZE);
     T* wram_base_addr_Y = mem_alloc(BLOCK_SIZE);
+    assert (wram_base_addr_X != NULL && wram_base_addr_Y != NULL);
 
     for (unsigned int byte_index = base_tasklet; byte_index < input_size_dpu_bytes;
         byte_index += BLOCK_SIZE * NR_TASKLETS) {
 
-        // Bound checking
-        //@@ INSERT BOUND CHECKING HERE
         __mram_ptr T* mram_blk_start_X = (__mram_ptr T*)(mram_base_addr_X + byte_index);
         __mram_ptr T* mram_blk_start_Y = (__mram_ptr T*)(mram_base_addr_Y + byte_index);
-
-        // last block might be smaller than BLOCK_SIZE if input_size_dpu_bytes isn't BLOCK_SIZE aligned
         uint32_t act_tf_size = BLOCK_SIZE;
+
+        // Bound checking
+        //@@ INSERT BOUND CHECKING HERE
+        // last block might be smaller than BLOCK_SIZE if input_size_dpu_bytes isn't BLOCK_SIZE aligned
         if (byte_index + BLOCK_SIZE > input_size_dpu_bytes) { // if this block extends past the end
             act_tf_size = input_size_dpu_bytes - byte_index; // only transfer remaining bytes for this tasklet
         }
